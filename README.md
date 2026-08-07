@@ -18,17 +18,14 @@
 | 抖音 | ✅ 可用 | 视频(无水印)、图集;走 iesdouyin 分享页提取 `_ROUTER_DATA` |
 | TikTok | ✅ 可用 | 视频、图集;详情页 `__UNIVERSAL_DATA_FOR_REHYDRATION__` |
 | Twitter/X | ✅ 可用 | 视频、图文;syndication 嵌入端点(无需鉴权) |
-| 微博 | ✅ 解析可用,⚠️ 媒体被 CDN 封 CF IP | 视频、图文(含转发微博);蜘蛛 UA 抓 detail 页 `$render_data`;媒体发送需中继 |
+| 微博 | ✅ 可用(已配中继) | 视频、图文(含转发微博);蜘蛛 UA 抓 detail 页 `$render_data`;媒体 CDN 封 CF IP,经 Vercel 中继发送 |
 | 小红书 | ✅ 可用 | 视频、图文;笔记页 `__INITIAL_STATE__`(依赖新鲜 xsec_token,免签名);支持 xhslink.com/.cn 短链 |
 | Instagram | ✅ 封面模式可用 | 免登录走 oEmbed(文案+作者+封面);配置 `INSTAGRAM_COOKIE` 后解锁视频/图集(移动端 API) |
 | Bilibili | ✅ 可用(已配中继) | api 走 Vercel 中继(vercel-proxy/),视频由 Worker 直连 CDN 中转发送(720p 优先);解析链:bili_ticket/APP 签名/WBI 多线路 |
 | 微信公众号 | ✅ 可用 | 图文 → telegra.ph;图片走 qpic.cn.in 反代;个别节点可能被微信环境验证拦截,重试可过 |
 
-> **关于微博媒体/B站**:微博解析可用但 CDN(sinaimg/weibocdn)封 Cloudflare IP,媒体发不出;
-> B站 api 全端点对 CF IP 返回 412(实测 iOS/TV app 签名、bili_ticket、WBI 均无效,纯 IP 封锁)。
-> 两者都需要干净 IP 的 HTTP 中继才能恢复。
->
-> 防盗链说明:微博/抖音视频有 Referer 防盗链,发送时由 Worker 中转(relay);内联(inline)模式下此类平台会引导私聊使用。
+> **中继说明**:B站 API 与微博媒体 CDN 都对 Cloudflare IP 做风控,统一经 `MEDIA_RELAY_*` 配置的中继出口。
+> 防盗链说明:微博/抖音视频等有 Referer 防盗链的资源,发送时由 Worker 中转(relay)或经本站 `/proxy` 补头。
 
 ## 诊断端点
 
@@ -73,12 +70,12 @@ curl "https://mediabot.<你的子域>.workers.dev/setup?secret=<WEBHOOK_SECRET>"
 # Instagram 完整模式(视频/图集):浏览器登录 instagram.com 后,F12 → Application → Cookies 复制整串
 npx wrangler secret put INSTAGRAM_COOKIE   # 未配置时 IG 仅发封面图
 
-# B站 API 中继(B站对 Cloudflare IP 全系 412,需干净 IP 出口):
-npx wrangler secret put BILI_API_RELAY     # 例:https://你的vercel应用/api/proxy?url=
-npx wrangler secret put BILI_RELAY_TOKEN   # 中继的 x-proxy-token 鉴权串
+# 媒体/API 中继(B站 API 与微博 CDN 对 Cloudflare IP 全系风控,需干净 IP 出口):
+npx wrangler secret put MEDIA_RELAY_URL    # 例:https://你的vercel应用/api/proxy?url=
+npx wrangler secret put MEDIA_RELAY_TOKEN  # 中继的 x-proxy-token 鉴权串
 ```
 
-**B站中继部署**(Vercel 免费方案,函数区域建议 Hong Kong):把 [bili-resolver 的 vercel-proxy](https://github.com/Yamada-Ryo4/bili-resolver/tree/main/vercel-proxy) 部署到你的 Vercel,改掉代码里硬编码的 token,然后把地址和 token 写入上面两个 secret。视频中转(`/proxy`,补 Referer)已内置在本 worker,无需额外部署。
+**中继部署**(Vercel 免费方案,函数区域建议 Hong Kong):部署本仓库 `vercel-proxy/` 目录(协议兼容 bili-resolver,白名单含 B站/微博域名),把地址和 token 写入上面两个 secret。视频中转(`/proxy`,补 Referer)已内置在本 worker,无需额外部署。
 
 之后给 Bot 私聊发链接即可;群聊中 Bot 需要能读到消息(BotFather `/setprivacy` 关闭,或将 Bot 设为管理员)。
 
@@ -117,9 +114,9 @@ src/
 ## 已知限制
 
 - 网页解析随目标站改版可能失效,表现为解析失败提示,需跟进修复对应 parser
-- **微博媒体发不出**:CDN(sinaimg/weibocdn)对 Cloudflare 机房 IP 做风控,恢复需自建 HTTP 中继
-- 无转码:非 mp4/H.264 视频可能无法在 Telegram 内嵌播放
+- **无转码**:非 mp4/H.264 视频可能无法在 Telegram 内嵌播放
 - 免费版 Workers:CPU 10ms/请求(解析均为 I/O 等待,不受影响)、内存 128MB(relay ≤50MB 安全)
+- B站/微博依赖 `MEDIA_RELAY_*` 中继;未配置时这两个平台不可用
 
 ## CI/CD
 

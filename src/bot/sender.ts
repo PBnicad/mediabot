@@ -1,6 +1,6 @@
 import type { ParseResult } from '../parsers/types';
 import { createTextPage } from '../parsers/telegraph';
-import { MAX_RELAY_SIZE, MediaTooBigError, downloadMedia } from './media';
+import { MAX_RELAY_SIZE, MediaTooBigError, downloadMedia, type RelayConfig } from './media';
 import { Telegram, escapeHtml } from './telegram';
 
 const CAPTION_LIMIT = 1024;
@@ -70,7 +70,13 @@ export async function sendLongTextResult(tg: Telegram, chatId: number, replyTo: 
 }
 
 /** 将解析结果发送到聊天 */
-export async function sendResult(tg: Telegram, chatId: number, replyTo: number | undefined, result: ParseResult): Promise<void> {
+export async function sendResult(
+  tg: Telegram,
+  chatId: number,
+  replyTo: number | undefined,
+  result: ParseResult,
+  relay: RelayConfig = {},
+): Promise<void> {
   if (result.type === 'article') {
     const text = buildArticleText(result);
     if (result.coverUrl) {
@@ -106,9 +112,9 @@ export async function sendResult(tg: Telegram, chatId: number, replyTo: number |
       }
     }
 
-    // relay:Worker 直连 CDN 下载(rawUrl 优先,带防盗链头)→ 上传(≤50MB)
+    // relay:Worker 直连 CDN 下载(rawUrl 优先,带防盗链头;封 CF 的走中继)→ 上传(≤50MB)
     try {
-      const { data } = await downloadMedia({ url: v.rawUrl ?? v.url, referer: v.referer });
+      const { data } = await downloadMedia({ url: v.rawUrl ?? v.url, referer: v.referer }, relay);
       await tg.sendVideoUpload(chatId, data, caption, { duration: v.duration }, replyTo);
     } catch (e) {
       if (e instanceof MediaTooBigError) {
@@ -146,11 +152,11 @@ export async function sendResult(tg: Telegram, chatId: number, replyTo: number |
     }
   }
 
-  // relay:逐张下载(带各自的防盗链头)再上传
+  // relay:逐张下载(带各自的防盗链头;封 CF 的走中继)再上传
   const items: { data: ArrayBuffer; contentType: string }[] = [];
   for (const m of result.media.slice(0, 10)) {
     try {
-      const d = await downloadMedia({ url: m.url, referer: m.referer });
+      const d = await downloadMedia({ url: m.url, referer: m.referer }, relay);
       items.push(d);
     } catch {
       // 跳过下载失败的图片

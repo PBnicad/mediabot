@@ -243,8 +243,8 @@ export const bilibiliParser: Parser = {
 
   async parse(rawUrl: string, env: ParserEnv): Promise<ParseResult> {
     // 配置中继(每次解析刷新,env 不变时开销可忽略)
-    relayBase = env.BILI_API_RELAY?.trim() || undefined;
-    relayToken = env.BILI_RELAY_TOKEN?.trim() || undefined;
+    relayBase = env.MEDIA_RELAY_URL?.trim() || undefined;
+    relayToken = env.MEDIA_RELAY_TOKEN?.trim() || undefined;
 
     let url = rawUrl;
     if (new URL(rawUrl).hostname === 'b23.tv') {

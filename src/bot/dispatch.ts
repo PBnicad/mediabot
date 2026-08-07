@@ -89,7 +89,7 @@ async function handleMessage(tg: Telegram, msg: TgUpdateMessage, env: Env): Prom
       // 长文模式:只发 Telegraph + 原文双链接
       await sendLongTextResult(tg, chatId, msg.message_id, result);
     } else {
-      await sendResult(tg, chatId, msg.message_id, result);
+      await sendResult(tg, chatId, msg.message_id, result, { url: env.MEDIA_RELAY_URL, token: env.MEDIA_RELAY_TOKEN });
     }
     if (status) await tg.deleteMessage(chatId, status.message_id);
   } catch (e) {
@@ -163,8 +163,8 @@ async function handleInline(tg: Telegram, iq: TgInlineQuery, env: Env, origin: s
   if (result.type === 'video') {
     const v = result.media[0];
     // 防盗链平台经本站 /proxy 补 Referer 供 Telegram 抓取;
-    // 微博 CDN 连 CF 也封,代理无效,只能引导私聊
-    const proxied = v?.referer && result.platform !== 'weibo';
+    // 微博 CDN 连 CF 也封,由 /proxy 自动改走中继出口
+    const proxied = !!v?.referer;
     const videoUrl = v ? (proxied ? `${origin}/proxy?url=${encodeURIComponent(v.url)}` : v.url) : null;
     const thumbUrl = v?.coverUrl ? (proxied ? `${origin}/proxy?url=${encodeURIComponent(v.coverUrl)}` : v.coverUrl) : null;
 
@@ -194,11 +194,13 @@ async function handleInline(tg: Telegram, iq: TgInlineQuery, env: Env, origin: s
     }
   } else if (result.type === 'images') {
     for (const [i, m] of result.media.slice(0, 10).entries()) {
+      // 防盗链图片(微博等)经本站 /proxy(封 CF 的由代理自动走中继)
+      const imgUrl = m.referer ? `${origin}/proxy?url=${encodeURIComponent(m.url)}` : m.url;
       results.push({
         type: 'photo',
         id: `p${i}`,
-        photo_url: m.url,
-        thumb_url: m.url,
+        photo_url: imgUrl,
+        thumb_url: imgUrl,
         title: result.title?.slice(0, 64) || `${result.platformName} 图片`,
         caption: i === 0 ? caption : '',
         parse_mode: 'HTML',

@@ -46,10 +46,10 @@ export interface ParseResult {
 /** 解析器可用的环境配置(与 Env 结构兼容) */
 export interface ParserEnv {
   INSTAGRAM_COOKIE?: string;
-  /** B站 API 中继(bili-resolver vercel-proxy 格式:base + encodeURIComponent(url)) */
-  BILI_API_RELAY?: string;
+  /** 媒体/API 中继(bili-resolver vercel-proxy 格式:base + encodeURIComponent(url)),用于 CF 被封的平台(B站 API、微博 CDN) */
+  MEDIA_RELAY_URL?: string;
   /** 中继鉴权 token(x-proxy-token 头) */
-  BILI_RELAY_TOKEN?: string;
+  MEDIA_RELAY_TOKEN?: string;
 }
 
 export interface Parser {

@@ -2,7 +2,10 @@
  * 视频流中转(移植自 bili-resolver 的 /proxy):
  * 给各平台 CDN 请求补 Referer/UA,透传 Range,让 Telegram 或浏览器可直接拉流。
  * 仅限白名单 CDN 域名,防止被当开放代理滥用。
+ * 封 CF IP 的 CDN(微博图床/视频)自动改经中继出口(MEDIA_RELAY_*)拉取。
  */
+
+import { isCfBlockedHost, viaRelay, type RelayConfig } from './bot/media';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
@@ -29,7 +32,7 @@ function refererFor(hostname: string): string | null {
   return null;
 }
 
-export async function handleProxy(request: Request, url: URL): Promise<Response> {
+export async function handleProxy(request: Request, url: URL, relay: RelayConfig = {}): Promise<Response> {
   const target = url.searchParams.get('url');
   if (!target) return new Response('Missing URL', { status: 400 });
 
@@ -53,8 +56,15 @@ export async function handleProxy(request: Request, url: URL): Promise<Response>
   const range = request.headers.get('Range');
   if (range) headers.set('Range', range);
 
+  // CF 被封的 CDN(微博等)经中继出口拉取
+  let fetchUrl = target;
+  if (isCfBlockedHost(target) && relay.url) {
+    fetchUrl = viaRelay(target, relay);
+    if (relay.token) headers.set('x-proxy-token', relay.token);
+  }
+
   try {
-    const upstream = await fetch(target, { headers });
+    const upstream = await fetch(fetchUrl, { headers });
     if (upstream.status >= 500) {
       return new Response(`CDN Error: ${upstream.status}`, { status: upstream.status });
     }

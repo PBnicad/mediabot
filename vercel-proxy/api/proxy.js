@@ -19,8 +19,9 @@ export default async function handler(req, res) {
   try {
     const target = new URL(targetUrl);
     const h = target.hostname;
-    // 仅允许转发 bilibili 相关域名,防止被当开放代理滥用
-    if (!h.includes('bilibili.com') && !h.includes('biliapi.net') && !h.includes('b23.tv') && !h.includes('bilivideo') && !h.includes('hdslb')) {
+    // 仅允许转发白名单域名,防止被当开放代理滥用
+    const ALLOWED = ['bilibili.com', 'biliapi.net', 'b23.tv', 'bilivideo', 'hdslb', 'weibo.com', 'weibocdn', 'sinaimg'];
+    if (!ALLOWED.some((d) => h.includes(d))) {
       res.status(403).send('Forbidden');
       return;
     }

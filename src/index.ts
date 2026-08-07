@@ -13,9 +13,9 @@ export default {
       return new Response('mediabot is running');
     }
 
-    // 视频流中转(B站等防盗链 CDN 补 Referer)
+    // 视频流中转(B站等防盗链 CDN 补 Referer;微博等封 CF 的经中继)
     if (url.pathname === '/proxy') {
-      return handleProxy(request, url);
+      return handleProxy(request, url, { url: env.MEDIA_RELAY_URL, token: env.MEDIA_RELAY_TOKEN });
     }
 
     // 注册/更新 webhook:GET /setup?secret=<WEBHOOK_SECRET>
