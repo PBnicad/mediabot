@@ -76,7 +76,13 @@ export default {
           biliCookie = await getAntiCrawlCookie();
           headers['Cookie'] = biliCookie;
         }
-        const res = await fetch(target, { headers });
+        // &relay=1 时经媒体中继转发目标请求(验证 Vercel 出口)
+        let fetchTarget = target;
+        if (url.searchParams.get('relay') && env.MEDIA_RELAY_URL) {
+          fetchTarget = env.MEDIA_RELAY_URL + encodeURIComponent(target);
+          if (env.MEDIA_RELAY_TOKEN) headers['x-proxy-token'] = env.MEDIA_RELAY_TOKEN;
+        }
+        const res = await fetch(fetchTarget, { headers });
         const body = await res.text();
         const around = url.searchParams.get('around');
         const aroundIdx = around ? body.indexOf(around) : -1;

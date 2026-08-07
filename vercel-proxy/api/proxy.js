@@ -20,7 +20,7 @@ export default async function handler(req, res) {
     const target = new URL(targetUrl);
     const h = target.hostname;
     // 仅允许转发白名单域名,防止被当开放代理滥用
-    const ALLOWED = ['bilibili.com', 'biliapi.net', 'b23.tv', 'bilivideo', 'hdslb', 'weibo.com', 'weibocdn', 'sinaimg'];
+    const ALLOWED = ['bilibili.com', 'biliapi.net', 'b23.tv', 'bilivideo', 'hdslb', 'weibo.com', 'weibo.cn', 'weibocdn', 'sinaimg'];
     if (!ALLOWED.some((d) => h.includes(d))) {
       res.status(403).send('Forbidden');
       return;

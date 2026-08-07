@@ -1,13 +1,101 @@
-import { ParseError, type MediaItem, type ParseResult, type Parser } from './types';
-import { extractRawObject, looseJsonParse, fetchText } from './http';
+import { ParseError, type MediaItem, type ParseResult, type Parser, type ParserEnv } from './types';
+import { extractRawObject, looseJsonParse, fetchJson, fetchText, UA_MOBILE } from './http';
 
 const NAME = '微博';
 
 /**
  * 微博对机房 IP 的拦截:m.weibo.cn API 走 Sina Visitor 系统(403/JS 验证),
- * 但搜索引擎蜘蛛 UA 抓 detail 页可正常返回且带 $render_data。
+ * 但搜索引擎蜘蛛 UA 抓 detail 页可正常返回且带 $render_data;
+ * detail 页不认纯数字 mid 时,退回 statuses/show API(经中继出口)。
  */
 const UA_BOT = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)';
+
+/** statuses/show JSON API 经媒体中继取数(detail 页失败时的备用路径) */
+async function viaStatusApi(id: string, env: ParserEnv): Promise<WeiboStatus | null> {
+  const relayBase = env.MEDIA_RELAY_URL?.trim();
+  if (!relayBase) return null;
+  try {
+    const headers: Record<string, string> = {
+      'User-Agent': UA_MOBILE,
+      Referer: 'https://m.weibo.cn/',
+    };
+    if (env.MEDIA_RELAY_TOKEN) headers['x-proxy-token'] = env.MEDIA_RELAY_TOKEN;
+    const res = await fetch(relayBase + encodeURIComponent(`https://m.weibo.cn/statuses/show?id=${encodeURIComponent(id)}`), { headers });
+    const json = (await res.json()) as { ok?: number; data?: WeiboStatus };
+    return json.ok === 1 && json.data ? json.data : null;
+  } catch {
+    return null;
+  }
+}
+
+interface PlayInfoResponse {
+  code?: string;
+  data?: {
+    Component_Play_Playinfo?: {
+      title?: string;
+      text?: string;
+      nickname?: string;
+      author?: string;
+      urls?: Record<string, string>;
+      stream_url?: string;
+      cover_image?: string;
+      display_duration?: string;
+    };
+  };
+}
+
+/** "03:21" → 秒 */
+function parseDuration(s?: string): number | undefined {
+  if (!s) return undefined;
+  const parts = s.split(':').map(Number);
+  if (parts.some(isNaN)) return undefined;
+  return parts.reduce((acc, v) => acc * 60 + v, 0);
+}
+
+/** video.weibo.com/show?fid= 视频页:H5 playinfo 组件 API(CF 直连可行) */
+async function viaPlayInfo(fid: string, rawUrl: string): Promise<ParseResult> {
+  const data = encodeURIComponent(JSON.stringify({ Component_Play_Playinfo: { oid: fid } }));
+  const api = `https://h5.video.weibo.com/api/component?page=${encodeURIComponent(`/show/${fid}`)}&data=${data}`;
+
+  let json: PlayInfoResponse;
+  try {
+    json = await fetchJson<PlayInfoResponse>(api, {
+      ua: UA_MOBILE,
+      referer: `https://h5.video.weibo.com/show/${fid}`,
+    });
+  } catch (e) {
+    throw new ParseError(NAME, `视频信息获取失败(${e instanceof Error ? e.message : '网络错误'})`);
+  }
+  const info = json.data?.Component_Play_Playinfo;
+  if (json.code !== '100000' || !info) throw new ParseError(NAME, '视频信息获取失败(可能已删除或受限)');
+
+  // 多清晰度里选最高(键名含 1080P/720P 等)
+  const entries = Object.entries(info.urls ?? {});
+  entries.sort((a, b) => Number(b[0].match(/\d+/)?.[0] ?? 0) - Number(a[0].match(/\d+/)?.[0] ?? 0));
+  let videoUrl = entries[0]?.[1] ?? info.stream_url;
+  if (!videoUrl) throw new ParseError(NAME, '视频地址提取失败');
+  if (videoUrl.startsWith('//')) videoUrl = `https:${videoUrl}`;
+
+  const rawTitle = info.text ?? info.title;
+
+  return {
+    platform: 'weibo',
+    platformName: NAME,
+    type: 'video',
+    title: rawTitle?.replace(/<[^>]+>/g, '').trim(),
+    author: info.nickname ?? info.author,
+    sourceUrl: rawUrl,
+    media: [
+      {
+        type: 'video',
+        url: videoUrl.replace(/^http:/, 'https:'),
+        coverUrl: info.cover_image ? info.cover_image.replace(/^\/\//, 'https://') : undefined,
+        duration: parseDuration(info.display_duration),
+        referer: 'https://weibo.com/',
+      },
+    ],
+  };
+}
 
 interface WeiboStatus {
   text_raw?: string;
@@ -51,16 +139,30 @@ export const weiboParser: Parser = {
     );
   },
 
-  async parse(rawUrl: string): Promise<ParseResult> {
-    const pathSeg = new URL(rawUrl).pathname.split('/').filter(Boolean);
-    const id = pathSeg[pathSeg.length - 1];
-    if (!id) throw new ParseError(NAME, '未识别到微博 ID');
+  async parse(rawUrl: string, env: ParserEnv): Promise<ParseResult> {
+    const u = new URL(rawUrl);
 
+    // video.weibo.com/show?fid= 视频页:走 H5 playinfo 组件 API
+    if (u.hostname === 'video.weibo.com') {
+      const fid = u.searchParams.get('fid');
+      if (!fid) throw new ParseError(NAME, '未识别到视频 fid');
+      return viaPlayInfo(fid, rawUrl);
+    }
+
+    const pathSeg = u.pathname.split('/').filter(Boolean);
+    const id = pathSeg[pathSeg.length - 1];
+    if (!id || !/^[\w]+$/.test(id)) throw new ParseError(NAME, '未识别到微博 ID');
+
+    // 主路径:googlebot UA 抓 detail 页(CF 直连可行)
     const { text: html } = await fetchText(`https://m.weibo.cn/detail/${encodeURIComponent(id)}`, {
       ua: UA_BOT,
       referer: 'https://m.weibo.cn/',
     });
-    const status = statusFromRenderData(html);
+    let status = statusFromRenderData(html);
+
+    // 备用路径:statuses/show JSON API 经中继(detail 页出错/被拦时,如纯数字 mid)
+    if (!status) status = await viaStatusApi(id, env);
+
     if (!status) throw new ParseError(NAME, '微博内容获取失败(可能已删除或触发风控)');
 
     const base = {

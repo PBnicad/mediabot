@@ -43,6 +43,7 @@ describe('findParser 平台识别', () => {
     ['https://vt.tiktok.com/abc123/', 'tiktok'],
     ['https://weibo.com/1234567890/AbCdEfGh', 'weibo'],
     ['https://m.weibo.cn/status/AbCdEfGh', 'weibo'],
+    ['https://video.weibo.com/show?fid=1034:5327932424388664', 'weibo'],
     ['https://mp.weixin.qq.com/s/abcdefg', 'wechat'],
     ['http://xhslink.com/o/7ncNUxICbbN', 'xhs'],
     ['http://xhslink.cn/o/3qZDxC8KQUI', 'xhs'],
