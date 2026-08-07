@@ -10,7 +10,7 @@ export default {
 
     // 健康检查
     if (url.pathname === '/' || url.pathname === '/health') {
-      return new Response('jiexi-bot is running');
+      return new Response('mediabot is running');
     }
 
     // 视频流中转(B站等防盗链 CDN 补 Referer)

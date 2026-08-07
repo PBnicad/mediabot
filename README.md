@@ -1,4 +1,4 @@
-# jiexi-bot
+# mediabot
 
 纯 serverless 的 Telegram 链接解析 Bot,运行在 Cloudflare Workers 上,零服务器成本。
 
@@ -63,7 +63,7 @@ npx wrangler secret put WEBHOOK_SECRET  # 随机字符串,自行生成,如 opens
 npm run deploy
 
 # 4. 注册 webhook(浏览器或 curl 访问,替换为你的 worker 域名和密钥)
-curl "https://jiexi-bot.<你的子域>.workers.dev/setup?secret=<WEBHOOK_SECRET>"
+curl "https://mediabot.<你的子域>.workers.dev/setup?secret=<WEBHOOK_SECRET>"
 # 返回 {"ok":true,...} 即完成
 ```
 
