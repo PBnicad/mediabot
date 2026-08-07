@@ -7,6 +7,9 @@ on:
 jobs:
   test-and-deploy:
     runs-on: ubuntu-latest
+    env:
+      # secrets 不能直接用在步骤的 if 里,映射到 job env 供下方中继部署步骤判断是否配置
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -33,3 +36,19 @@ jobs:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           accountId: ${{ secrets.CF_ACCOUNT_ID }}
           command: deploy ${{ vars.CUSTOM_DOMAIN != '' && format('--domains {0}', vars.CUSTOM_DOMAIN) || '' }}
+
+      # 部署 Vercel 中继(vercel-proxy/;项目 rootDirectory 已指向该目录,从仓库根目录构建)。
+      # 需要 secrets:
+      #   VERCEL_TOKEN      — https://vercel.com/account/tokens 创建(scope 选本团队)
+      #   VERCEL_ORG_ID / VERCEL_PROJECT_ID — 见 vercel-proxy/.vercel/project.json
+      # 未配置 VERCEL_TOKEN 时跳过(中继很少改,不阻塞 worker 部署);
+      # Vercel 项目的 Git 直连已断开,中继只经此流水线受门控部署。
+      - name: Deploy relay to Vercel
+        if: ${{ env.VERCEL_TOKEN != '' }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          npx vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+          npx vercel build --prod --token="$VERCEL_TOKEN"
+          npx vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
