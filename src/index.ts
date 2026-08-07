@@ -84,6 +84,10 @@ export default {
         }
         const res = await fetch(fetchTarget, { headers });
         const body = await res.text();
+        // &full=1 时返回完整 body(调试用,截断 32KB)
+        if (url.searchParams.get('full')) {
+          return new Response(body.slice(0, 32768), { headers: { 'content-type': 'text/plain; charset=utf-8' } });
+        }
         const around = url.searchParams.get('around');
         const aroundIdx = around ? body.indexOf(around) : -1;
         const title = body.match(/<title[^>]*>([\s\S]*?)<\/title>/)?.[1]?.trim().slice(0, 100);

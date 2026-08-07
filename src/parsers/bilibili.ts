@@ -262,6 +262,51 @@ interface DynamicData {
   };
 }
 
+interface OpusDetail {
+  code?: number;
+  data?: {
+    item?: {
+      /** 注意:opus/detail 的 modules 是数组(与 v1/detail 的对象不同) */
+      modules?: {
+        module_type?: string;
+        module_content?: {
+          paragraphs?: {
+            para_type?: number;
+            text?: { nodes?: { type?: string; word?: { words?: string }; rich?: { text?: string } }[] };
+          }[];
+        };
+      }[];
+    };
+  };
+}
+
+/** 动态正文:v1/detail 的 desc 常为 null,补拉 opus/detail 的 paragraphs(失败不阻断) */
+async function fetchDynamicText(id: string, cookie: string): Promise<string | undefined> {
+  try {
+    const json = await fetchBiliJson<OpusDetail>(`https://api.bilibili.com/x/polymer/web-dynamic/v1/opus/detail?id=${id}`, {
+      'User-Agent': UA_DESKTOP,
+      Referer: REFERER,
+      Cookie: cookie,
+    });
+    const mods = json.data?.item?.modules ?? [];
+    const content = mods.find((m) => m.module_type === 'MODULE_TYPE_CONTENT') ?? mods.find((m) => m.module_content?.paragraphs?.length);
+    const paragraphs = content?.module_content?.paragraphs ?? [];
+    const lines: string[] = [];
+    for (const p of paragraphs) {
+      const nodes = p.text?.nodes;
+      if (!nodes) continue;
+      const line = nodes
+        .map((n) => n.word?.words ?? n.rich?.text ?? '')
+        .join('')
+        .trim();
+      if (line) lines.push(line);
+    }
+    return lines.join('\n') || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** 视频流(view + 多线路取流) */
 async function parseVideo(bvid: string, rawUrl: string, cookie: string): Promise<ParseResult> {
   const idParam = bvid.startsWith('av') ? `aid=${bvid.slice(2)}` : `bvid=${bvid}`;
@@ -341,19 +386,21 @@ async function parseDynamic(id: string, rawUrl: string, cookie: string): Promise
     return parseVideo(bv, rawUrl, cookie);
   }
 
+  // 正文:desc.text 常缺,补拉 opus/detail 的 paragraphs
+  const text = dyn?.desc?.text ?? (await fetchDynamicText(id, cookie)) ?? major.opus?.summary?.text;
+
   // 画集动态
   if (major.type === 'MAJOR_TYPE_DRAW') {
     const media = (major.draw?.items ?? [])
       .map((i) => i.src)
       .filter((u): u is string => !!u)
       .map((u) => ({ type: 'image' as const, url: u.replace(/^http:/, 'https:') }));
-    if (media.length) return { ...base, type: 'images', title: dyn?.desc?.text, media };
+    if (media.length) return { ...base, type: 'images', title: text, media };
     throw new ParseError(NAME, '画集图片提取失败');
   }
 
   // 图文动态(opus)
   if (major.type === 'MAJOR_TYPE_OPUS') {
-    const text = dyn?.desc?.text ?? major.opus?.summary?.text;
     const media = (major.opus?.pics ?? [])
       .map((p) => p.url)
       .filter((u): u is string => !!u)
