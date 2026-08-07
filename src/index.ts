@@ -114,7 +114,7 @@ export default {
       } catch {
         return new Response('bad request', { status: 400 });
       }
-      ctx.waitUntil(dispatch(update, env));
+      ctx.waitUntil(dispatch(update, env, url.origin));
       return new Response('ok');
     }
 

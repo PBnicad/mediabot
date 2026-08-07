@@ -38,11 +38,11 @@ const HELP_TEXT = `🔗 <b>链接解析 Bot</b>
 
 也可以在任意聊天输入 <code>@本Bot用户名 &lt;链接&gt;</code> 使用内联解析。`;
 
-export async function dispatch(update: TgUpdate, env: Env): Promise<void> {
+export async function dispatch(update: TgUpdate, env: Env, origin: string): Promise<void> {
   const tg = new Telegram(env);
   try {
     if (update.message) await handleMessage(tg, update.message, env);
-    else if (update.inline_query) await handleInline(tg, update.inline_query, env);
+    else if (update.inline_query) await handleInline(tg, update.inline_query, env, origin);
   } catch (e) {
     console.error('dispatch error:', e);
   }
@@ -110,7 +110,7 @@ function inlineArticle(id: string, title: string, description: string, messageTe
   };
 }
 
-async function handleInline(tg: Telegram, iq: TgInlineQuery, env: Env): Promise<void> {
+async function handleInline(tg: Telegram, iq: TgInlineQuery, env: Env, origin: string): Promise<void> {
   const query = iq.query.trim();
   const found = query ? findParser(query) : null;
 
@@ -162,14 +162,19 @@ async function handleInline(tg: Telegram, iq: TgInlineQuery, env: Env): Promise<
 
   if (result.type === 'video') {
     const v = result.media[0];
-    if (v && !v.referer) {
-      // 直链视频:Telegram 可直接抓取
+    // 防盗链平台经本站 /proxy 补 Referer 供 Telegram 抓取;
+    // 微博 CDN 连 CF 也封,代理无效,只能引导私聊
+    const proxied = v?.referer && result.platform !== 'weibo';
+    const videoUrl = v ? (proxied ? `${origin}/proxy?url=${encodeURIComponent(v.url)}` : v.url) : null;
+    const thumbUrl = v?.coverUrl ? (proxied ? `${origin}/proxy?url=${encodeURIComponent(v.coverUrl)}` : v.coverUrl) : null;
+
+    if (v && videoUrl && thumbUrl && (!v.referer || proxied)) {
       results.push({
         type: 'video',
         id: 'v0',
-        video_url: v.url,
+        video_url: videoUrl,
         mime_type: 'video/mp4',
-        thumb_url: v.coverUrl ?? v.url,
+        thumb_url: thumbUrl,
         title: result.title?.slice(0, 64) || `${result.platformName} 视频`,
         caption,
         parse_mode: 'HTML',
@@ -177,7 +182,7 @@ async function handleInline(tg: Telegram, iq: TgInlineQuery, env: Env): Promise<
         ...(v.width && v.height ? { video_width: v.width, video_height: v.height } : {}),
       });
     } else if (v) {
-      // 防盗链平台 inline 无法中转,引导私聊
+      // 微博等 CF 全封平台:引导私聊
       results.push(
         inlineArticle(
           'relay',
