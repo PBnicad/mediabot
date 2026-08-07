@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { extractUrls, findParser } from '../src/parsers';
 import { convertImageUrl, formatContent } from '../src/parsers/telegraph';
-import { LONG_TEXT_THRESHOLD, buildLongTextMessage, isLongText } from '../src/bot/sender';
+import { LONG_TEXT_THRESHOLD, buildTelegraphMessage, isLongText, isMultiImage, telegraphImageUrls, videoDirectUrl } from '../src/bot/sender';
 import type { ParseResult } from '../src/parsers/types';
 
 describe('extractUrls', () => {
@@ -155,11 +155,54 @@ describe('长文模式', () => {
 
   it('长文消息只含 Telegraph 与原文链接,不含正文', () => {
     const longTitle = `开头一句话。${'长'.repeat(900)}`;
-    const msg = buildLongTextMessage(makeResult({ title: longTitle, author: '作者' }), 'https://telegra.ph/abc-01-01');
+    const msg = buildTelegraphMessage(makeResult({ title: longTitle, author: '作者' }), 'https://telegra.ph/abc-01-01');
     expect(msg).toContain('https://telegra.ph/abc-01-01');
     expect(msg).toContain('原文链接');
     expect(msg).toContain('作者');
     expect(msg).not.toContain('长');
     expect(msg.length).toBeLessThan(300);
+  });
+});
+
+describe('多图模式', () => {
+  const img = (url: string, referer?: string) => ({ type: 'image' as const, url, referer });
+
+  it('图片超过 1 张判定为多图', () => {
+    expect(isMultiImage(makeResult({ type: 'images', media: [img('https://a/1.jpg'), img('https://a/2.jpg')] }))).toBe(true);
+    expect(isMultiImage(makeResult({ type: 'images', media: [img('https://a/1.jpg')] }))).toBe(false);
+    expect(isMultiImage(makeResult({ type: 'video', media: [{ type: 'video', url: 'https://a/v.mp4' }] }))).toBe(false);
+  });
+
+  it('Telegraph 配图:防盗链图无 origin 时丢弃,有 origin 时经本站代理', () => {
+    const result = makeResult({
+      type: 'images',
+      media: [img('https://a/1.jpg'), img('https://wx.sinaimg.cn/2.jpg', 'https://weibo.com/')],
+    });
+    expect(telegraphImageUrls(result)).toEqual(['https://a/1.jpg']);
+    expect(telegraphImageUrls(result, 'https://bot.example.com')).toEqual([
+      'https://a/1.jpg',
+      `https://bot.example.com/proxy?url=${encodeURIComponent('https://wx.sinaimg.cn/2.jpg')}`,
+    ]);
+    expect(telegraphImageUrls(makeResult({ type: 'video' }))).toEqual([]);
+  });
+});
+
+describe('视频直发候选', () => {
+  it('防盗链视频有 origin 时经本站代理,无 origin 时放弃直发', () => {
+    const v = { type: 'video' as const, url: 'https://f.video.weibocdn.com/x.mp4', referer: 'https://weibo.com/' };
+    expect(videoDirectUrl(v)).toBeNull();
+    expect(videoDirectUrl(v, 'https://bot.example.com')).toBe(
+      `https://bot.example.com/proxy?url=${encodeURIComponent('https://f.video.weibocdn.com/x.mp4')}`,
+    );
+  });
+
+  it('无防盗链或已有公开代理链(rawUrl)时用原 url', () => {
+    expect(videoDirectUrl({ type: 'video', url: 'https://a/v.mp4' })).toBe('https://a/v.mp4');
+    expect(
+      videoDirectUrl(
+        { type: 'video', url: 'https://bot.example.com/proxy?url=x', rawUrl: 'https://upos.cn/v.mp4', referer: 'https://b.com/' },
+        'https://bot.example.com',
+      ),
+    ).toBe('https://bot.example.com/proxy?url=x');
   });
 });

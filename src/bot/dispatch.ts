@@ -2,7 +2,7 @@ import type { Env } from '../config';
 import { findParser, supportedPlatformNames } from '../parsers';
 import { ParseError, type ParseResult } from '../parsers/types';
 import { createTextPage } from '../parsers/telegraph';
-import { buildCaption, buildLongTextMessage, isLongText, sendLongTextResult, sendResult } from './sender';
+import { buildCaption, buildTelegraphMessage, isLongText, isMultiImage, sendResult, sendTelegraphResult, telegraphImageUrls } from './sender';
 import { Telegram, escapeHtml, type TgMessage } from './telegram';
 
 // ── Telegram Update 宽松类型(仅取用到的字段) ──
@@ -41,14 +41,14 @@ const HELP_TEXT = `🔗 <b>链接解析 Bot</b>
 export async function dispatch(update: TgUpdate, env: Env, origin: string): Promise<void> {
   const tg = new Telegram(env);
   try {
-    if (update.message) await handleMessage(tg, update.message, env);
+    if (update.message) await handleMessage(tg, update.message, env, origin);
     else if (update.inline_query) await handleInline(tg, update.inline_query, env, origin);
   } catch (e) {
     console.error('dispatch error:', e);
   }
 }
 
-async function handleMessage(tg: Telegram, msg: TgUpdateMessage, env: Env): Promise<void> {
+async function handleMessage(tg: Telegram, msg: TgUpdateMessage, env: Env, origin: string): Promise<void> {
   const text = msg.text ?? msg.caption ?? '';
   if (!text) return;
 
@@ -85,11 +85,11 @@ async function handleMessage(tg: Telegram, msg: TgUpdateMessage, env: Env): Prom
 
   try {
     if (status) await tg.editMessageText(chatId, status.message_id, '📤 解析完成,发送中...').catch(() => undefined);
-    if (isLongText(result)) {
-      // 长文模式:只发 Telegraph + 原文双链接
-      await sendLongTextResult(tg, chatId, msg.message_id, result);
+    if (isLongText(result) || isMultiImage(result)) {
+      // 长文/多图模式:整篇转 Telegraph,只发 Telegraph + 原文双链接
+      await sendTelegraphResult(tg, chatId, msg.message_id, result, origin);
     } else {
-      await sendResult(tg, chatId, msg.message_id, result, { url: env.MEDIA_RELAY_URL, token: env.MEDIA_RELAY_TOKEN });
+      await sendResult(tg, chatId, msg.message_id, result, { url: env.MEDIA_RELAY_URL, token: env.MEDIA_RELAY_TOKEN }, origin);
     }
     if (status) await tg.deleteMessage(chatId, status.message_id);
   } catch (e) {
@@ -135,22 +135,23 @@ async function handleInline(tg: Telegram, iq: TgInlineQuery, env: Env, origin: s
   const caption = buildCaption(result);
   const results: Record<string, unknown>[] = [];
 
-  // 长文模式:只给 Telegraph + 原文双链接
-  if (isLongText(result)) {
+  // 长文/多图模式:整篇转 Telegraph,只给 Telegraph + 原文双链接
+  if (isLongText(result) || isMultiImage(result)) {
+    const gallery = !isLongText(result);
     try {
       const pageUrl = await createTextPage({
         title: result.title?.trim().slice(0, 200) || `${result.platformName} 内容`,
         author: result.author,
         sourceUrl: result.sourceUrl,
         text: result.title ?? '',
-        imageUrls: result.type === 'images' ? result.media.filter((m) => !m.referer).map((m) => m.url).slice(0, 20) : [],
+        imageUrls: telegraphImageUrls(result, origin),
       });
       results.push(
         inlineArticle(
-          'longtext',
-          result.title?.trim().slice(0, 64) || `${result.platformName} 内容`,
-          '📄 长文,点击查看 Telegraph 全文',
-          buildLongTextMessage(result, pageUrl),
+          'telegraph',
+          result.title?.trim().slice(0, 64) || (gallery ? `${result.platformName} 图集` : `${result.platformName} 内容`),
+          gallery ? `🖼 共 ${result.media.length} 张图,点击查看 Telegraph 图集` : '📄 长文,点击查看 Telegraph 全文',
+          buildTelegraphMessage(result, pageUrl),
         ),
       );
     } catch {

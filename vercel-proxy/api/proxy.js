@@ -1,6 +1,8 @@
 // B站 API 中继(Vercel Node serverless,函数区域香港 hkg1)
 // 协议与 bili-resolver 的 vercel-proxy 兼容:{base}?url=<encodeURIComponent(目标)>
 // 鉴权:请求头 x-proxy-token 需与环境变量 PROXY_TOKEN 一致
+import { Readable } from 'node:stream';
+
 export default async function handler(req, res) {
   const url = new URL(req.url, 'https://localhost');
   const targetUrl = url.searchParams.get('url');
@@ -34,7 +36,8 @@ export default async function handler(req, res) {
     const response = await fetch(targetUrl, {
       method: req.method === 'POST' ? 'POST' : 'GET',
       headers,
-      redirect: 'manual',
+      // CDN 的 302 由中继服务端跟随,避免调用方(CF)被重定向到封锁它的域名后裸连
+      redirect: 'follow',
     });
 
     res.status(response.status);
@@ -46,8 +49,12 @@ export default async function handler(req, res) {
     });
     res.setHeader('Access-Control-Allow-Origin', '*');
 
-    const buf = Buffer.from(await response.arrayBuffer());
-    res.send(buf);
+    // 流式回传:突破 serverless ~4.5MB 响应上限,大视频边下边传(首字节即返)
+    if (!response.body) {
+      res.end();
+      return;
+    }
+    Readable.fromWeb(response.body).pipe(res);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

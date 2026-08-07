@@ -1,4 +1,4 @@
-import type { ParseResult } from '../parsers/types';
+import type { MediaItem, ParseResult } from '../parsers/types';
 import { createTextPage } from '../parsers/telegraph';
 import { MAX_RELAY_SIZE, MediaTooBigError, downloadMedia, type RelayConfig } from './media';
 import { Telegram, escapeHtml } from './telegram';
@@ -11,6 +11,28 @@ export const LONG_TEXT_THRESHOLD = 800;
 /** 是否长文结果(article 类型本身就走 telegraph,不在此列) */
 export function isLongText(result: ParseResult): boolean {
   return result.type !== 'article' && (result.title?.trim().length ?? 0) > LONG_TEXT_THRESHOLD;
+}
+
+/** 是否多图结果(图集整篇转 Telegraph:inline 模式发不了相册,一个链接即可浏览全部图) */
+export function isMultiImage(result: ParseResult): boolean {
+  return result.type === 'images' && result.media.length > 1;
+}
+
+/** Telegraph 页可用配图:无防盗链的直链;有防盗链的经本站 /proxy 补 Referer(origin 缺失时丢弃,避免裂图) */
+export function telegraphImageUrls(result: ParseResult, origin?: string): string[] {
+  if (result.type !== 'images') return [];
+  const urls: string[] = [];
+  for (const m of result.media) {
+    if (!m.referer) urls.push(m.url);
+    else if (origin) urls.push(`${origin}/proxy?url=${encodeURIComponent(m.url)}`);
+  }
+  return urls.slice(0, 20);
+}
+
+/** 视频 URL 直发候选:无防盗链用直链;有防盗链经本站 /proxy 补 Referer;rawUrl 存在时 url 已是公开代理链 */
+export function videoDirectUrl(v: MediaItem, origin?: string): string | null {
+  if (v.rawUrl || !v.referer) return v.url;
+  return origin ? `${origin}/proxy?url=${encodeURIComponent(v.url)}` : null;
 }
 
 export function buildCaption(result: ParseResult): string {
@@ -41,8 +63,8 @@ function buildArticleText(result: ParseResult): string {
   return parts.join('\n');
 }
 
-/** 长文消息:只发 Telegraph 链接 + 原文链接(不发正文内容) */
-export function buildLongTextMessage(result: ParseResult, pageUrl: string): string {
+/** Telegraph 消息:只发 Telegraph 链接 + 原文链接(长文/图集共用,不带正文) */
+export function buildTelegraphMessage(result: ParseResult, pageUrl: string): string {
   const parts: string[] = [];
   const meta = [result.author ? `👤 ${escapeHtml(result.author)}` : '', `📎 ${result.platformName}`]
     .filter(Boolean)
@@ -53,19 +75,22 @@ export function buildLongTextMessage(result: ParseResult, pageUrl: string): stri
   return parts.join('\n');
 }
 
-/** 长文结果处理:建 Telegraph 页(正文+可直链的配图),只回双链接消息 */
-export async function sendLongTextResult(tg: Telegram, chatId: number, replyTo: number | undefined, result: ParseResult): Promise<string> {
-  // 仅嵌入无防盗链的图片(sinaimg 等带 referer 的在 telegraph 里会是裂图)
-  const imageUrls =
-    result.type === 'images' ? result.media.filter((m) => !m.referer).map((m) => m.url).slice(0, 20) : [];
+/** 长文/图集结果处理:建 Telegraph 页(正文+配图,防盗链图经本站 /proxy),只回双链接消息 */
+export async function sendTelegraphResult(
+  tg: Telegram,
+  chatId: number,
+  replyTo: number | undefined,
+  result: ParseResult,
+  origin?: string,
+): Promise<string> {
   const pageUrl = await createTextPage({
     title: result.title?.trim().slice(0, 200) || `${result.platformName} 内容`,
     author: result.author,
     sourceUrl: result.sourceUrl,
     text: result.title ?? '',
-    imageUrls,
+    imageUrls: telegraphImageUrls(result, origin),
   });
-  await tg.sendMessage(chatId, buildLongTextMessage(result, pageUrl), replyTo);
+  await tg.sendMessage(chatId, buildTelegraphMessage(result, pageUrl), replyTo);
   return pageUrl;
 }
 
@@ -76,6 +101,7 @@ export async function sendResult(
   replyTo: number | undefined,
   result: ParseResult,
   relay: RelayConfig = {},
+  origin?: string,
 ): Promise<void> {
   if (result.type === 'article') {
     const text = buildArticleText(result);
@@ -107,11 +133,14 @@ export async function sendResult(
       return;
     }
 
-    // URL 直发(Telegram 服务端抓取,Worker 零流量):
-    // 无防盗链,或 url 已是可公开访问的本站代理(rawUrl 存在)时尝试
-    if (!v.referer || v.rawUrl) {
+    // URL 直发优先(Telegram 服务端抓取,Worker 零流量,不占 waitUntil 的 30s 墙钟预算):
+    // 防盗链视频(微博等)经本站 /proxy 补 Referer;封 CF 的 CDN 由 proxy 自动走中继流式转发
+    const directUrl = videoDirectUrl(v, origin);
+    if (directUrl) {
+      // 防盗链封面同样经 /proxy,避免 Telegram 抓封面失败导致整个 sendVideo 被拒
+      const cover = v.coverUrl && v.referer && origin ? `${origin}/proxy?url=${encodeURIComponent(v.coverUrl)}` : v.coverUrl;
       try {
-        await tg.sendVideoByUrl(chatId, v.url, caption, { cover: v.coverUrl, duration: v.duration }, replyTo);
+        await tg.sendVideoByUrl(chatId, directUrl, caption, { cover, duration: v.duration }, replyTo);
         return;
       } catch {
         // 直发失败(超 20MB 等),落入 relay
