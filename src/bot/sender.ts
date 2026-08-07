@@ -166,9 +166,11 @@ export async function sendResult(
     return;
   }
 
-  // images
-  const urls = result.media.map((m) => m.url).filter(Boolean);
-  if (!urls.length) throw new Error('解析结果中没有图片');
+  // images:防盗链图(微博等)经本站 /proxy 补 Referer 供 Telegram 直抓(封 CF 的由 proxy 自动走中继),
+  // 避免 worker 侧整段下载+上传撑爆 waitUntil 的 30s 墙钟预算
+  const photos = result.media.filter((m) => m.url);
+  if (!photos.length) throw new Error('解析结果中没有图片');
+  const urls = photos.map((m) => (m.referer && origin ? `${origin}/proxy?url=${encodeURIComponent(m.url)}` : m.url));
 
   if (urls.length === 1) {
     try {

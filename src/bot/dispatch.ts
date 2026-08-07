@@ -87,8 +87,8 @@ async function handleMessage(tg: Telegram, msg: TgUpdateMessage, env: Env, origi
 
   try {
     if (status) await tg.editMessageText(chatId, status.message_id, '📤 解析完成,发送中...').catch(() => undefined);
-    if (isLongText(result) || isMultiImage(result)) {
-      // 长文/多图模式:整篇转 Telegraph,只发 Telegraph + 原文双链接
+    if (isLongText(result)) {
+      // 长文模式:整篇转 Telegraph,只发 Telegraph + 原文双链接
       await sendTelegraphResult(tg, chatId, msg.message_id, result, origin);
     } else {
       await sendResult(tg, chatId, msg.message_id, result, { url: env.MEDIA_RELAY_URL, token: env.MEDIA_RELAY_TOKEN }, origin);
