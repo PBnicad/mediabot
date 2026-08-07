@@ -75,7 +75,7 @@ npx wrangler secret put MEDIA_RELAY_URL    # 例:https://你的vercel应用/api/
 npx wrangler secret put MEDIA_RELAY_TOKEN  # 中继的 x-proxy-token 鉴权串
 ```
 
-**中继部署**(Vercel 免费方案,函数区域建议 Hong Kong):部署本仓库 `vercel-proxy/` 目录(协议兼容 bili-resolver,白名单含 B站/微博域名),把地址和 token 写入上面两个 secret。视频中转(`/proxy`,补 Referer)已内置在本 worker,无需额外部署。
+**中继部署**(Vercel 免费方案,函数区域 Hong Kong,流式转发大视频):Vercel 项目已关联本 GitHub 仓库且 rootDirectory 设为 `vercel-proxy`,push 到 main 即自动部署(与 worker 的 CD 并行);也可在仓库根目录 `npx vercel deploy --prod` 手动部署。协议兼容 bili-resolver,白名单含 B站/微博域名,把地址和 token 写入上面两个 secret。注意:项目的 Deployment Protection 必须保持仅预览(默认),若对生产部署开启 SSO 保护,worker 服务端调用会被 404 拦截。视频中转(`/proxy`,补 Referer)已内置在本 worker,无需额外部署。
 
 之后给 Bot 私聊发链接即可;群聊中 Bot 需要能读到消息(BotFather `/setprivacy` 关闭,或将 Bot 设为管理员)。
 
