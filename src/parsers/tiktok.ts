@@ -1,5 +1,6 @@
 import { ParseError, type MediaItem, type ParseResult, type Parser } from './types';
 import { UA_DESKTOP, expandUrl, extractScriptJson, fetchText } from './http';
+import { cleanShareUrl } from './clean';
 
 const NAME = 'TikTok';
 const REFERER = 'https://www.tiktok.com/';
@@ -57,7 +58,7 @@ export const tiktokParser: Parser = {
       platformName: NAME,
       title: item.desc,
       author: item.author?.nickname ?? item.author?.uniqueId,
-      sourceUrl: rawUrl,
+      sourceUrl: cleanShareUrl(pageUrl),
     };
 
     if (item.imagePost?.images?.length) {

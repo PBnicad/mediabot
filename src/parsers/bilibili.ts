@@ -1,5 +1,6 @@
 import { ParseError, type ParseResult, type Parser, type ParserEnv } from './types';
 import { UA_DESKTOP, expandUrl } from './http';
+import { cleanShareUrl } from './clean';
 
 const NAME = 'Bilibili';
 const REFERER = 'https://www.bilibili.com/';
@@ -443,12 +444,12 @@ export const bilibiliParser: Parser = {
 
     // 动态
     const dynId = extractDynamicId(u);
-    if (dynId) return parseDynamic(dynId, rawUrl, cookie);
+    if (dynId) return parseDynamic(dynId, cleanShareUrl(url), cookie);
 
     // 视频
     const bvid = extractBvid(u);
     if (!bvid) throw new ParseError(NAME, '未识别到视频 BV 号或动态 ID');
-    return parseVideo(bvid, rawUrl, cookie);
+    return parseVideo(bvid, cleanShareUrl(url), cookie);
   },
 };
 

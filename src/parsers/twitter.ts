@@ -1,5 +1,6 @@
 import { ParseError, type MediaItem, type ParseResult, type Parser } from './types';
 import { fetchJson } from './http';
+import { cleanShareUrl } from './clean';
 
 const NAME = 'Twitter/X';
 
@@ -62,7 +63,7 @@ export const twitterParser: Parser = {
       platformName: NAME,
       title: tweet.text,
       author: tweet.user?.name ? `${tweet.user.name} (@${tweet.user.screen_name})` : undefined,
-      sourceUrl: rawUrl,
+      sourceUrl: cleanShareUrl(rawUrl),
     };
 
     const mediaList = tweet.mediaDetails ?? [];

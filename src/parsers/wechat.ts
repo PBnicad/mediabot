@@ -1,6 +1,7 @@
 import { ParseError, type ParseResult, type Parser } from './types';
 import { UA_DESKTOP, fetchText } from './http';
 import { convertImageUrl, createPage, formatContent } from './telegraph';
+import { cleanShareUrl } from './clean';
 import TurndownService from 'turndown';
 import { parseHTML } from 'linkedom';
 
@@ -218,7 +219,7 @@ export const wechatParser: Parser = {
       type: 'article',
       title,
       author,
-      sourceUrl: rawUrl,
+      sourceUrl: cleanShareUrl(rawUrl),
       media: [],
       articleUrl: pageUrl,
       coverUrl: cover ? convertImageUrl(cover) : undefined,

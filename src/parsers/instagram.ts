@@ -1,5 +1,6 @@
 import { ParseError, type MediaItem, type ParseResult, type Parser, type ParserEnv } from './types';
 import { UA_DESKTOP, UA_MOBILE, fetchJson } from './http';
+import { cleanShareUrl } from './clean';
 
 const NAME = 'Instagram';
 const APP_ID = '936619743392459'; // Instagram Web 公开 App ID
@@ -90,7 +91,7 @@ export const instagramParser: Parser = {
       platformName: NAME,
       title: oe.title,
       author: oe.author_name,
-      sourceUrl: rawUrl,
+      sourceUrl: cleanShareUrl(rawUrl),
     };
 
     const cookie = env.INSTAGRAM_COOKIE?.trim();

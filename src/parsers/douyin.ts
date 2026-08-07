@@ -1,5 +1,6 @@
 import { ParseError, type MediaItem, type ParseResult, type Parser } from './types';
 import { UA_MOBILE, expandUrl, extractInlineJson, fetchText } from './http';
+import { cleanShareUrl } from './clean';
 
 const NAME = '抖音';
 const REFERER = 'https://www.douyin.com/';
@@ -71,7 +72,7 @@ export const douyinParser: Parser = {
       platformName: NAME,
       title: item.desc,
       author: item.author?.nickname,
-      sourceUrl: rawUrl,
+      sourceUrl: cleanShareUrl(pageUrl),
     };
 
     // 图集

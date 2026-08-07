@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { extractUrls, findParser } from '../src/parsers';
+import { cleanShareUrl } from '../src/parsers/clean';
 import { convertImageUrl, formatContent } from '../src/parsers/telegraph';
 import { LONG_TEXT_THRESHOLD, buildTelegraphMessage, isLongText, isMultiImage, telegraphImageUrls, videoDirectUrl } from '../src/bot/sender';
 import type { ParseResult } from '../src/parsers/types';
@@ -218,5 +219,35 @@ describe('视频直发候选', () => {
         'https://bot.example.com',
       ),
     ).toBe('https://bot.example.com/proxy?url=x');
+  });
+});
+
+describe('分享链接清洗(去用户指纹)', () => {
+  const cases: [string, string, string][] = [
+    ['小红书', 'https://www.xiaohongshu.com/explore/66e1c2d5000000001e023456?xsec_token=ABcd1234&xsec_source=pc_share', 'https://www.xiaohongshu.com/explore/66e1c2d5000000001e023456'],
+    ['小红书discovery', 'https://www.xiaohongshu.com/discovery/item/66e1c2d5000000001e023456?xsec_token=ABcd1234', 'https://www.xiaohongshu.com/explore/66e1c2d5000000001e023456'],
+    ['抖音分享页', 'https://www.iesdouyin.com/share/video/7510234567890123456/?region=CN&share_id=999&u_code=abc', 'https://www.douyin.com/video/7510234567890123456'],
+    ['抖音图集', 'https://www.douyin.com/note/7510234567890123456?share_token=xyz', 'https://www.douyin.com/note/7510234567890123456'],
+    ['B站视频', 'https://www.bilibili.com/video/BV1xx411c7mD?t=1&spm_id_from=333.999&vd_source=abc123', 'https://www.bilibili.com/video/BV1xx411c7mD'],
+    ['B站分P保留', 'https://www.bilibili.com/video/BV1xx411c7mD?p=3&vd_source=abc123', 'https://www.bilibili.com/video/BV1xx411c7mD?p=3'],
+    ['B站动态', 'https://t.bilibili.com/987654321?spm_id_from=333.999', 'https://t.bilibili.com/987654321'],
+    ['B站opus', 'https://www.bilibili.com/opus/987654321?from=share', 'https://t.bilibili.com/987654321'],
+    ['TikTok', 'https://www.tiktok.com/@user999/video/7510234567890123456?_t=8abc&_r=1', 'https://www.tiktok.com/@user999/video/7510234567890123456'],
+    ['微博主页', 'https://weibo.com/6915061973/PAbCdEfGh?share_token=xyz&from=page', 'https://weibo.com/6915061973/PAbCdEfGh'],
+    ['微博视频页', 'https://video.weibo.com/show?fid=1034:5327932424388664&from=share', 'https://video.weibo.com/show?fid=1034:5327932424388664'],
+    ['X', 'https://x.com/someuser/status/1987654321098765432?s=20&t=AbCdEf', 'https://x.com/someuser/status/1987654321098765432'],
+    ['Twitter', 'https://twitter.com/someuser/status/1987654321098765432?s=20', 'https://twitter.com/someuser/status/1987654321098765432'],
+    ['Instagram', 'https://www.instagram.com/reel/DQcdEfGhIj/?igsh=MTkxYmY0abc==&utm_source=share', 'https://www.instagram.com/reel/DQcdEfGhIj/'],
+    ['微信长链', 'https://mp.weixin.qq.com/s?__biz=MzA3xx&mid=224748&idx=1&sn=abcdef&chksm=1a2b3c&scene=21#wechat_redirect', 'https://mp.weixin.qq.com/s?__biz=MzA3xx&mid=224748&idx=1&sn=abcdef'],
+    ['微信短链', 'https://mp.weixin.qq.com/s/AbCdEfGhIjKlMnOp#wechat_redirect', 'https://mp.weixin.qq.com/s/AbCdEfGhIjKlMnOp'],
+  ];
+  for (const [name, input, expected] of cases) {
+    it(name, () => {
+      expect(cleanShareUrl(input)).toBe(expected);
+    });
+  }
+
+  it('非法 URL 原样返回', () => {
+    expect(cleanShareUrl('not a url')).toBe('not a url');
   });
 });

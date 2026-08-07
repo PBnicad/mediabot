@@ -1,5 +1,6 @@
 import { ParseError, type MediaItem, type ParseResult, type Parser } from './types';
 import { UA_DESKTOP, UA_MOBILE, expandUrl, extractInlineJson, fetchText } from './http';
+import { cleanShareUrl } from './clean';
 
 const NAME = '小红书';
 const REFERER = 'https://www.xiaohongshu.com/';
@@ -105,7 +106,7 @@ export const xhsParser: Parser = {
         platformName: NAME,
         title: note.title || note.desc,
         author: note.user?.nickname,
-        sourceUrl: rawUrl,
+        sourceUrl: cleanShareUrl(url),
       };
 
       // 视频笔记

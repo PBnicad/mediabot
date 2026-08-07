@@ -9,6 +9,7 @@
 
 - **多平台解析**:私聊/群聊发链接即解析,支持 inline 模式(`@bot <链接>`)
 - **长文/多图模式**:正文超过 800 字或图片超过 1 张时自动转 Telegraph,bot 只回 Telegraph 链接 + 原文链接(不刷屏,inline 模式也能发图集);配图经 qpic.cn.in 反代(小红书/B站/微信图床)或本站 /proxy(微博等强防盗链)嵌入 Telegraph 页面
+- **链接清洗**:外发的原文链接重建为规范地址,剥除分享追踪参数(xsec_token / igsh / t= / spm / vd_source / share_* 等),不带分享者指纹
 - **防盗链处理**:URL 直发优先(防盗链视频经本站 /proxy 补 Referer,封 CF 的自动走中继流式转发),失败再回退 Worker 中转下载,超过 50MB 提示限制
 
 ## 支持平台

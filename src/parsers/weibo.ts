@@ -1,5 +1,6 @@
 import { ParseError, type MediaItem, type ParseResult, type Parser, type ParserEnv } from './types';
 import { extractRawObject, looseJsonParse, fetchJson, fetchText, UA_MOBILE } from './http';
+import { cleanShareUrl } from './clean';
 
 const NAME = '微博';
 
@@ -84,7 +85,7 @@ async function viaPlayInfo(fid: string, rawUrl: string): Promise<ParseResult> {
     type: 'video',
     title: rawTitle?.replace(/<[^>]+>/g, '').trim(),
     author: info.nickname ?? info.author,
-    sourceUrl: rawUrl,
+    sourceUrl: cleanShareUrl(rawUrl),
     media: [
       {
         type: 'video',
@@ -170,7 +171,7 @@ export const weiboParser: Parser = {
       platformName: NAME,
       title: status.text_raw ?? status.text?.replace(/<[^>]+>/g, ''),
       author: status.user?.screen_name,
-      sourceUrl: rawUrl,
+      sourceUrl: cleanShareUrl(rawUrl),
     };
 
     // 转发微博:本体无媒体时取被转发那条
