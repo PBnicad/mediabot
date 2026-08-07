@@ -185,6 +185,20 @@ describe('多图模式', () => {
     ]);
     expect(telegraphImageUrls(makeResult({ type: 'video' }))).toEqual([]);
   });
+
+  it('小红书 xhscdn 图经 qpic.cn.in 反代(完整 URL 形式)', () => {
+    const result = makeResult({
+      type: 'images',
+      media: [
+        img('https://sns-webpic-qc.xhscdn.com/2026/a/1040g2sg323f0ad450a4g!nd_dft_wlteh_jpg_3'),
+        img('https://sns-img-qc.xhscdn.com/2026/b.jpg'),
+      ],
+    });
+    expect(telegraphImageUrls(result)).toEqual([
+      'https://qpic.cn.in/https://sns-webpic-qc.xhscdn.com/2026/a/1040g2sg323f0ad450a4g!nd_dft_wlteh_jpg_3',
+      'https://qpic.cn.in/https://sns-img-qc.xhscdn.com/2026/b.jpg',
+    ]);
+  });
 });
 
 describe('视频直发候选', () => {

@@ -1,5 +1,5 @@
 import type { MediaItem, ParseResult } from '../parsers/types';
-import { createTextPage } from '../parsers/telegraph';
+import { convertImageUrl, createTextPage } from '../parsers/telegraph';
 import { MAX_RELAY_SIZE, MediaTooBigError, downloadMedia, type RelayConfig } from './media';
 import { Telegram, escapeHtml } from './telegram';
 
@@ -18,12 +18,13 @@ export function isMultiImage(result: ParseResult): boolean {
   return result.type === 'images' && result.media.length > 1;
 }
 
-/** Telegraph 页可用配图:无防盗链的直链;有防盗链的经本站 /proxy 补 Referer(origin 缺失时丢弃,避免裂图) */
+/** Telegraph 页可用配图:无防盗链的图床(xhscdn/微信图)经 qpic.cn.in 反代;有防盗链的经本站 /proxy 补 Referer(origin 缺失时丢弃,避免裂图) */
 export function telegraphImageUrls(result: ParseResult, origin?: string): string[] {
   if (result.type !== 'images') return [];
   const urls: string[] = [];
   for (const m of result.media) {
-    if (!m.referer) urls.push(m.url);
+    // 无防盗链的直链(xhscdn/微信图床经 qpic.cn.in 反代);有防盗链的经本站 /proxy(origin 缺失时丢弃,避免裂图)
+    if (!m.referer) urls.push(convertImageUrl(m.url));
     else if (origin) urls.push(`${origin}/proxy?url=${encodeURIComponent(m.url)}`);
   }
   return urls.slice(0, 20);

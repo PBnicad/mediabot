@@ -81,19 +81,26 @@ export async function createTextPage(opts: {
 }
 
 /**
- * 微信图片经 qpic.cn.in 公共反代访问(与参考实现 WeChatImageUtils.convertImageUrl 一致)
+ * 图床经 qpic.cn.in 公共反代访问:
+ * 微信(mmbiz.qpic.cn/wx.qlogo.cn)用 host 前缀形式并补 wxtype 参数(参考实现 WeChatImageUtils.convertImageUrl);
+ * 小红书(xhscdn 系)用完整 URL 形式(https://qpic.cn.in/<原始URL>,与 parse_hub_bot 一致)
  */
 export function convertImageUrl(imageUrl: string): string {
   if (!imageUrl) return '';
 
-  // 已代理过:只补参数,不重复代理
+  const isWechatHost = imageUrl.includes('mmbiz.qpic.cn') || imageUrl.includes('wx.qlogo.cn');
+
+  // 已代理过:微信图补参数,其余原样返回,不重复代理
   if (imageUrl.includes('qpic.cn.in/')) {
-    if (!imageUrl.includes('wxtype=')) {
+    if (isWechatHost && !imageUrl.includes('wxtype=')) {
       const sep = imageUrl.includes('?') ? '&' : '?';
       return `${imageUrl}${sep}wxtype=jpeg&wxfrom=0`;
     }
     return imageUrl;
   }
+
+  // 小红书图床:完整原始 URL 直接接在反代域名后
+  if (imageUrl.includes('xhscdn.')) return `https://qpic.cn.in/${imageUrl}`;
 
   let out = imageUrl;
   if (out.includes('mmbiz.qpic.cn')) out = out.replace('mmbiz.qpic.cn', 'qpic.cn.in/mmbiz.qpic.cn');
