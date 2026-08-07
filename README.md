@@ -21,7 +21,7 @@
 | 微博 | ✅ 可用(已配中继) | 视频、图文(含转发微博);蜘蛛 UA 抓 detail 页 `$render_data`;媒体 CDN 封 CF IP,经 Vercel 中继发送 |
 | 小红书 | ✅ 可用 | 视频、图文;笔记页 `__INITIAL_STATE__`(依赖新鲜 xsec_token,免签名);支持 xhslink.com/.cn 短链 |
 | Instagram | ✅ 封面模式可用 | 免登录走 oEmbed(文案+作者+封面);配置 `INSTAGRAM_COOKIE` 后解锁视频/图集(移动端 API) |
-| Bilibili | ✅ 可用(已配中继) | api 走 Vercel 中继(vercel-proxy/),视频由 Worker 直连 CDN 中转发送(720p 优先);解析链:bili_ticket/APP 签名/WBI 多线路 |
+| Bilibili | ✅ 可用(已配中继) | 视频(720p 优先)、动态(视频/画集/图文);api 走 Vercel 中继(vercel-proxy/),视频由 Worker 直连 CDN 中转发送;解析链:bili_ticket/APP 签名/WBI 多线路 |
 | 微信公众号 | ✅ 可用 | 图文 → telegra.ph;图片走 qpic.cn.in 反代;个别节点可能被微信环境验证拦截,重试可过 |
 
 > **中继说明**:B站 API 与微博媒体 CDN 都对 Cloudflare IP 做风控,统一经 `MEDIA_RELAY_*` 配置的中继出口。

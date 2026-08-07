@@ -231,6 +231,140 @@ function extractBvid(url: URL): string | null {
   return av ? `av${av[1]}` : null;
 }
 
+/** 动态链接 ID:t.bilibili.com/{id}、www.bilibili.com/opus/{id}、m.bilibili.com/dynamic/{id} */
+function extractDynamicId(url: URL): string | null {
+  const h = url.hostname;
+  if (h === 't.bilibili.com') return url.pathname.match(/^\/(\d+)/)?.[1] ?? null;
+  if (h === 'www.bilibili.com' || h === 'bilibili.com' || h === 'm.bilibili.com') {
+    return url.pathname.match(/\/(?:opus|dynamic)\/(\d+)/)?.[1] ?? null;
+  }
+  return null;
+}
+
+interface DynamicData {
+  code?: number;
+  message?: string;
+  data?: {
+    item?: {
+      modules?: {
+        module_author?: { name?: string };
+        module_dynamic?: {
+          desc?: { text?: string } | null;
+          major?: {
+            type?: string;
+            archive?: { bvid?: string };
+            draw?: { items?: { src?: string }[] };
+            opus?: { pics?: { url?: string }[]; summary?: { text?: string } };
+          } | null;
+        };
+      };
+    };
+  };
+}
+
+/** 视频流(view + 多线路取流) */
+async function parseVideo(bvid: string, rawUrl: string, cookie: string): Promise<ParseResult> {
+  const idParam = bvid.startsWith('av') ? `aid=${bvid.slice(2)}` : `bvid=${bvid}`;
+
+  let view: ViewData;
+  try {
+    view = await fetchBiliJson<ViewData>(`https://api.bilibili.com/x/web-interface/view?${idParam}`, {
+      'User-Agent': UA_DESKTOP,
+      Referer: REFERER,
+      Cookie: cookie,
+    });
+  } catch (e) {
+    if (e instanceof AntiCrawlError) throw new ParseError(NAME, 'B站风控拦截,请稍后重试');
+    throw e;
+  }
+  if (view.code !== 0 || !view.data?.cid) {
+    throw new ParseError(NAME, view.message ?? ERROR_MAP[view.code ?? 0] ?? '视频信息获取失败');
+  }
+
+  const { title, pic, duration, cid, owner } = view.data;
+  const bv = view.data.bvid ?? bvid;
+
+  let stream: { url: string; quality?: number; size?: number };
+  try {
+    stream = await getPlayUrlWithFallback(bv, cid!, cookie);
+  } catch (e) {
+    throw new ParseError(NAME, e instanceof Error ? e.message : '取流失败');
+  }
+
+  // 注:不经本站 /proxy 中转 —— 代理流约 500KB/s,Telegram 直抓会超时(Network connection lost)。
+  // 一律走 relay:Worker 直连 upos 下载(带 Referer)→ 上传 Telegram。
+  return {
+    platform: 'bilibili',
+    platformName: NAME,
+    type: 'video',
+    title,
+    author: owner?.name,
+    sourceUrl: rawUrl,
+    media: [
+      {
+        type: 'video',
+        url: stream.url,
+        referer: REFERER,
+        size: stream.size,
+        coverUrl: pic,
+        duration,
+      },
+    ],
+  };
+}
+
+/** 动态流(web-dynamic detail,走中继) */
+async function parseDynamic(id: string, rawUrl: string, cookie: string): Promise<ParseResult> {
+  let detail: DynamicData;
+  try {
+    detail = await fetchBiliJson<DynamicData>(`https://api.bilibili.com/x/polymer/web-dynamic/v1/detail?id=${id}`, {
+      'User-Agent': UA_DESKTOP,
+      Referer: REFERER,
+      Cookie: cookie,
+    });
+  } catch (e) {
+    if (e instanceof AntiCrawlError) throw new ParseError(NAME, 'B站风控拦截,请稍后重试');
+    throw e;
+  }
+  if (detail.code !== 0) throw new ParseError(NAME, detail.message ?? `动态获取失败(${detail.code})`);
+
+  const dyn = detail.data?.item?.modules?.module_dynamic;
+  const author = detail.data?.item?.modules?.module_author?.name;
+  const base = { platform: 'bilibili', platformName: NAME, author, sourceUrl: rawUrl };
+  const major = dyn?.major;
+  if (!major) throw new ParseError(NAME, '动态内容为空或已删除');
+
+  // 视频动态 → 复用视频流
+  if (major.type === 'MAJOR_TYPE_ARCHIVE') {
+    const bv = major.archive?.bvid;
+    if (!bv) throw new ParseError(NAME, '动态视频信息提取失败');
+    return parseVideo(bv, rawUrl, cookie);
+  }
+
+  // 画集动态
+  if (major.type === 'MAJOR_TYPE_DRAW') {
+    const media = (major.draw?.items ?? [])
+      .map((i) => i.src)
+      .filter((u): u is string => !!u)
+      .map((u) => ({ type: 'image' as const, url: u.replace(/^http:/, 'https:') }));
+    if (media.length) return { ...base, type: 'images', title: dyn?.desc?.text, media };
+    throw new ParseError(NAME, '画集图片提取失败');
+  }
+
+  // 图文动态(opus)
+  if (major.type === 'MAJOR_TYPE_OPUS') {
+    const text = dyn?.desc?.text ?? major.opus?.summary?.text;
+    const media = (major.opus?.pics ?? [])
+      .map((p) => p.url)
+      .filter((u): u is string => !!u)
+      .map((u) => ({ type: 'image' as const, url: u.replace(/^http:/, 'https:') }));
+    if (media.length) return { ...base, type: 'images', title: text, media };
+    throw new ParseError(NAME, '纯文字动态,没有可发送的媒体内容');
+  }
+
+  throw new ParseError(NAME, `暂不支持的动态类型: ${major.type ?? '未知'}`);
+}
+
 export const bilibiliParser: Parser = {
   id: 'bilibili',
   name: NAME,
@@ -238,7 +372,11 @@ export const bilibiliParser: Parser = {
   match(url: URL): boolean {
     const h = url.hostname;
     if (h === 'b23.tv') return true;
-    return (h === 'www.bilibili.com' || h === 'bilibili.com' || h === 'm.bilibili.com') && /\/(video\/|BV|av\d)/i.test(url.pathname);
+    if (h === 't.bilibili.com') return /\/\d+/.test(url.pathname);
+    if (h === 'www.bilibili.com' || h === 'bilibili.com' || h === 'm.bilibili.com') {
+      return /\/(video\/|BV|av\d)/i.test(url.pathname) || /\/(opus|dynamic)\/\d+/.test(url.pathname);
+    }
+    return false;
   },
 
   async parse(rawUrl: string, env: ParserEnv): Promise<ParseResult> {
@@ -250,57 +388,18 @@ export const bilibiliParser: Parser = {
     if (new URL(rawUrl).hostname === 'b23.tv') {
       url = (await expandUrl(rawUrl, { ua: UA_DESKTOP })).finalUrl;
     }
-    const bvid = extractBvid(new URL(url));
-    if (!bvid) throw new ParseError(NAME, '未识别到视频 BV 号');
+    const u = new URL(url);
 
     const cookie = await getAntiCrawlCookie();
-    const idParam = bvid.startsWith('av') ? `aid=${bvid.slice(2)}` : `bvid=${bvid}`;
 
-    let view: ViewData;
-    try {
-      view = await fetchBiliJson<ViewData>(`https://api.bilibili.com/x/web-interface/view?${idParam}`, {
-        'User-Agent': UA_DESKTOP,
-        Referer: REFERER,
-        Cookie: cookie,
-      });
-    } catch (e) {
-      if (e instanceof AntiCrawlError) throw new ParseError(NAME, 'B站风控拦截,请稍后重试');
-      throw e;
-    }
-    if (view.code !== 0 || !view.data?.cid) {
-      throw new ParseError(NAME, view.message ?? ERROR_MAP[view.code ?? 0] ?? '视频信息获取失败');
-    }
+    // 动态
+    const dynId = extractDynamicId(u);
+    if (dynId) return parseDynamic(dynId, rawUrl, cookie);
 
-    const { title, pic, duration, cid, owner } = view.data;
-    const bv = view.data.bvid ?? bvid;
-
-    let stream: { url: string; quality?: number; size?: number };
-    try {
-      stream = await getPlayUrlWithFallback(bv, cid!, cookie);
-    } catch (e) {
-      throw new ParseError(NAME, e instanceof Error ? e.message : '取流失败');
-    }
-
-    // 注:不经本站 /proxy 中转 —— 代理流约 500KB/s,Telegram 直抓会超时(Network connection lost)。
-    // 一律走 relay:Worker 直连 upos 下载(带 Referer)→ 上传 Telegram。
-    return {
-      platform: 'bilibili',
-      platformName: NAME,
-      type: 'video',
-      title,
-      author: owner?.name,
-      sourceUrl: rawUrl,
-      media: [
-        {
-          type: 'video',
-          url: stream.url,
-          referer: REFERER,
-          size: stream.size,
-          coverUrl: pic,
-          duration,
-        },
-      ],
-    };
+    // 视频
+    const bvid = extractBvid(u);
+    if (!bvid) throw new ParseError(NAME, '未识别到视频 BV 号或动态 ID');
+    return parseVideo(bvid, rawUrl, cookie);
   },
 };
 
