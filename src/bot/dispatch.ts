@@ -1,0 +1,220 @@
+import type { Env } from '../config';
+import { findParser, supportedPlatformNames } from '../parsers';
+import { ParseError, type ParseResult } from '../parsers/types';
+import { createTextPage } from '../parsers/telegraph';
+import { buildCaption, buildLongTextMessage, isLongText, sendLongTextResult, sendResult } from './sender';
+import { Telegram, escapeHtml, type TgMessage } from './telegram';
+
+// ── Telegram Update 宽松类型(仅取用到的字段) ──
+interface TgUser {
+  id: number;
+  first_name?: string;
+}
+interface TgChat {
+  id: number;
+  type: string;
+}
+interface TgUpdateMessage {
+  message_id: number;
+  chat: TgChat;
+  from?: TgUser;
+  text?: string;
+  caption?: string;
+}
+interface TgInlineQuery {
+  id: string;
+  from: TgUser;
+  query: string;
+}
+export interface TgUpdate {
+  update_id: number;
+  message?: TgUpdateMessage;
+  inline_query?: TgInlineQuery;
+}
+
+const HELP_TEXT = `🔗 <b>链接解析 Bot</b>
+
+直接发送链接即可解析,支持:${supportedPlatformNames}
+
+也可以在任意聊天输入 <code>@本Bot用户名 &lt;链接&gt;</code> 使用内联解析。`;
+
+export async function dispatch(update: TgUpdate, env: Env): Promise<void> {
+  const tg = new Telegram(env);
+  try {
+    if (update.message) await handleMessage(tg, update.message, env);
+    else if (update.inline_query) await handleInline(tg, update.inline_query, env);
+  } catch (e) {
+    console.error('dispatch error:', e);
+  }
+}
+
+async function handleMessage(tg: Telegram, msg: TgUpdateMessage, env: Env): Promise<void> {
+  const text = msg.text ?? msg.caption ?? '';
+  if (!text) return;
+
+  const chatId = msg.chat.id;
+  const isPrivate = msg.chat.type === 'private';
+  const found = findParser(text);
+
+  if (!found) {
+    // 仅私聊对 /start 或无链接消息回帮助;群聊静默
+    if (isPrivate && (text.startsWith('/start') || !text.includes('http'))) {
+      await tg.sendMessage(chatId, HELP_TEXT, msg.message_id);
+    }
+    return;
+  }
+
+  const status = await tg
+    .sendMessage(chatId, `🔍 ${found.parser.name} 链接,解析中...`, msg.message_id)
+    .catch(() => null);
+
+  const reportError = async (e: unknown) => {
+    const msgText = e instanceof ParseError ? `❌ ${e.platformName}解析失败:${escapeHtml(e.message)}` : `❌ 解析失败:${escapeHtml(e instanceof Error ? e.message : '未知错误')}`;
+    if (status) await tg.editMessageText(chatId, status.message_id, msgText).catch(() => undefined);
+    else await tg.sendMessage(chatId, msgText, msg.message_id).catch(() => undefined);
+  };
+
+  let result: ParseResult;
+  try {
+    result = await found.parser.parse(found.url, env);
+  } catch (e) {
+    console.error('parse error:', e);
+    await reportError(e);
+    return;
+  }
+
+  try {
+    if (status) await tg.editMessageText(chatId, status.message_id, '📤 解析完成,发送中...').catch(() => undefined);
+    if (isLongText(result)) {
+      // 长文模式:只发 Telegraph + 原文双链接
+      await sendLongTextResult(tg, chatId, msg.message_id, result);
+    } else {
+      await sendResult(tg, chatId, msg.message_id, result);
+    }
+    if (status) await tg.deleteMessage(chatId, status.message_id);
+  } catch (e) {
+    console.error('send error:', e);
+    await reportError(e);
+  }
+}
+
+// ── Inline ──
+
+function inlineArticle(id: string, title: string, description: string, messageText: string): Record<string, unknown> {
+  return {
+    type: 'article',
+    id,
+    title,
+    description,
+    input_message_content: { message_text: messageText, parse_mode: 'HTML', disable_web_page_preview: false },
+  };
+}
+
+async function handleInline(tg: Telegram, iq: TgInlineQuery, env: Env): Promise<void> {
+  const query = iq.query.trim();
+  const found = query ? findParser(query) : null;
+
+  if (!found) {
+    await tg.answerInlineQuery(
+      iq.id,
+      [inlineArticle('help', '输入链接开始解析', `支持:${supportedPlatformNames}`, HELP_TEXT)],
+      5,
+    );
+    return;
+  }
+
+  let result: ParseResult;
+  try {
+    result = await found.parser.parse(found.url, env);
+  } catch (e) {
+    const msgText = e instanceof ParseError ? `${e.platformName}解析失败:${e.message}` : '解析失败,请稍后重试';
+    await tg.answerInlineQuery(iq.id, [inlineArticle('error', '解析失败', msgText, `❌ ${escapeHtml(msgText)}`)], 5);
+    return;
+  }
+
+  const caption = buildCaption(result);
+  const results: Record<string, unknown>[] = [];
+
+  // 长文模式:只给 Telegraph + 原文双链接
+  if (isLongText(result)) {
+    try {
+      const pageUrl = await createTextPage({
+        title: result.title?.trim().slice(0, 200) || `${result.platformName} 内容`,
+        author: result.author,
+        sourceUrl: result.sourceUrl,
+        text: result.title ?? '',
+        imageUrls: result.type === 'images' ? result.media.filter((m) => !m.referer).map((m) => m.url).slice(0, 20) : [],
+      });
+      results.push(
+        inlineArticle(
+          'longtext',
+          result.title?.trim().slice(0, 64) || `${result.platformName} 内容`,
+          '📄 长文,点击查看 Telegraph 全文',
+          buildLongTextMessage(result, pageUrl),
+        ),
+      );
+    } catch {
+      results.push(inlineArticle('error', 'Telegraph 建页失败', '请稍后重试', `❌ Telegraph 建页失败\n<a href="${escapeHtml(result.sourceUrl)}">原文链接</a>`));
+    }
+    await tg.answerInlineQuery(iq.id, results, 300);
+    return;
+  }
+
+  if (result.type === 'video') {
+    const v = result.media[0];
+    if (v && !v.referer) {
+      // 直链视频:Telegram 可直接抓取
+      results.push({
+        type: 'video',
+        id: 'v0',
+        video_url: v.url,
+        mime_type: 'video/mp4',
+        thumb_url: v.coverUrl ?? v.url,
+        title: result.title?.slice(0, 64) || `${result.platformName} 视频`,
+        caption,
+        parse_mode: 'HTML',
+        ...(v.duration ? { video_duration: v.duration } : {}),
+        ...(v.width && v.height ? { video_width: v.width, video_height: v.height } : {}),
+      });
+    } else if (v) {
+      // 防盗链平台 inline 无法中转,引导私聊
+      results.push(
+        inlineArticle(
+          'relay',
+          `${result.platformName} 视频需回源下载`,
+          '该平台视频有防盗链,请私聊 Bot 发送此链接获取视频',
+          `${caption}\n\n⚠️ 该平台视频有防盗链,请私聊 Bot 发送链接解析`,
+        ),
+      );
+    }
+  } else if (result.type === 'images') {
+    for (const [i, m] of result.media.slice(0, 10).entries()) {
+      results.push({
+        type: 'photo',
+        id: `p${i}`,
+        photo_url: m.url,
+        thumb_url: m.url,
+        title: result.title?.slice(0, 64) || `${result.platformName} 图片`,
+        caption: i === 0 ? caption : '',
+        parse_mode: 'HTML',
+      });
+    }
+  } else if (result.type === 'article' && result.articleUrl) {
+    results.push(
+      inlineArticle(
+        'article',
+        result.title?.slice(0, 64) || '微信文章',
+        `📄 ${result.platformName} · Telegraph`,
+        `<b>${escapeHtml(result.title ?? '微信文章')}</b>\n📄 <a href="${result.articleUrl}">点击阅读全文(Telegraph)</a>\n<a href="${escapeHtml(result.sourceUrl)}">原文链接</a>`,
+      ),
+    );
+  }
+
+  if (!results.length) {
+    results.push(inlineArticle('empty', '未找到可发送的内容', '换个链接试试', '❌ 未找到可发送的内容'));
+  }
+
+  await tg.answerInlineQuery(iq.id, results, 300);
+}
+
+export type { TgMessage };

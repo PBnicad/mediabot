@@ -1,0 +1,18 @@
+name = "jiexi-bot"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+workers_dev = true
+
+# 自定义域名(可选,用于 /proxy 视频中转的外部访问):
+# 在 Cloudflare 仪表盘 → Workers → 本 worker → Settings → Domains & Routes 绑定你的域名,
+# 或在此取消注释并改成你自己的域名:
+# [[routes]]
+# pattern = "jiexi.example.com"
+# custom_domain = true
+
+# 机密配置通过 wrangler secret 设置:
+#   wrangler secret put BOT_TOKEN       # Telegram Bot Token(@BotFather 申请)
+#   wrangler secret put WEBHOOK_SECRET  # webhook 校验密钥(随机字符串,自行生成)
+#   wrangler secret put INSTAGRAM_COOKIE # 可选,Instagram 完整模式
+#   wrangler secret put BILI_API_RELAY  # 可选,B站 API 中继地址
+#   wrangler secret put BILI_RELAY_TOKEN # 可选,中继鉴权 token

@@ -1,0 +1,6 @@
+{
+  "name": "bili-api-proxy",
+  "private": true,
+  "type": "module",
+  "description": "B站 API 中继(Vercel serverless,供 jiexi-bot 使用)"
+}

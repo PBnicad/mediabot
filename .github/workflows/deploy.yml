@@ -1,0 +1,35 @@
+name: CD
+
+on:
+  push:
+    branches: [main, master]
+
+jobs:
+  test-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+      # 部署到 Cloudflare Workers。
+      # 需要在仓库 Settings → Secrets and variables → Actions 配置:
+      #   CF_API_TOKEN   — Cloudflare API Token(需 Workers 编辑权限,secret)
+      #   CF_ACCOUNT_ID  — Cloudflare Account ID(secret)
+      # 可选:Settings → Variables 配置 CUSTOM_DOMAIN(如 jiexi.example.com),部署时绑定自定义域名;
+      # 不配置则只使用 workers.dev 域名。
+      # BOT_TOKEN / WEBHOOK_SECRET / INSTAGRAM_COOKIE 等 Worker secrets 已存于 Cloudflare,
+      # wrangler deploy 不会清除,无需在 CI 中重复配置。
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          command: deploy ${{ vars.CUSTOM_DOMAIN != '' && format('--domains {0}', vars.CUSTOM_DOMAIN) || '' }}
