@@ -8,7 +8,7 @@
 ## 功能特性
 
 - **多平台解析**:私聊/群聊发链接即解析,支持 inline 模式(`@bot <链接>`)
-- **长文/多图模式**:正文超过 800 字或图片超过 1 张时自动转 Telegraph,bot 只回 Telegraph 链接 + 原文链接(不刷屏,inline 模式也能发图集);防盗链配图经本站 /proxy 嵌入 Telegraph 页面
+- **长文/多图模式**:正文超过 800 字或图片超过 1 张时自动转 Telegraph,bot 只回 Telegraph 链接 + 原文链接(不刷屏,inline 模式也能发图集);配图经 qpic.cn.in 反代(小红书/B站/微信图床)或本站 /proxy(微博等强防盗链)嵌入 Telegraph 页面
 - **防盗链处理**:URL 直发优先(防盗链视频经本站 /proxy 补 Referer,封 CF 的自动走中继流式转发),失败再回退 Worker 中转下载,超过 50MB 提示限制
 
 ## 支持平台
@@ -73,6 +73,10 @@ npx wrangler secret put INSTAGRAM_COOKIE   # 未配置时 IG 仅发封面图
 # 媒体/API 中继(B站 API 与微博 CDN 对 Cloudflare IP 全系风控,需干净 IP 出口):
 npx wrangler secret put MEDIA_RELAY_URL    # 例:https://你的vercel应用/api/proxy?url=
 npx wrangler secret put MEDIA_RELAY_TOKEN  # 中继的 x-proxy-token 鉴权串
+
+# 自建 /proxy 的对外独立域名(在 Cloudflare 仪表盘 → Workers → mediabot → Settings → Domains
+# 把自定义域名绑到本 worker 后设置;未配置时用 workers.dev 域名拼代理链接):
+npx wrangler secret put PROXY_ORIGIN       # 例:https://proxy.example.com
 ```
 
 **中继部署**(Vercel 免费方案,函数区域 Hong Kong,流式转发大视频):Vercel 项目的 rootDirectory 已设为 `vercel-proxy`,由 CD 流水线随 worker 一起部署(见「CI/CD」节);也可在仓库根目录 `npx vercel deploy --prod` 手动部署。协议兼容 bili-resolver,白名单含 B站/微博域名,把地址和 token 写入上面两个 secret。注意:项目的 Deployment Protection 必须保持仅预览(默认),若对生产部署开启 SSO 保护,worker 服务端调用会被 404 拦截。视频中转(`/proxy`,补 Referer)已内置在本 worker,无需额外部署。

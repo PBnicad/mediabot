@@ -9,4 +9,6 @@ export interface Env {
   MEDIA_RELAY_URL?: string;
   /** 可选:中继鉴权 token */
   MEDIA_RELAY_TOKEN?: string;
+  /** 可选:自建 /proxy 的对外独立域名(如 https://proxy.example.com);缺省用请求来源域名(workers.dev) */
+  PROXY_ORIGIN?: string;
 }

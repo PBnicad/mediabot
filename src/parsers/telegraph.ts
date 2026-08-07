@@ -83,7 +83,7 @@ export async function createTextPage(opts: {
 /**
  * 图床经 qpic.cn.in 公共反代访问:
  * 微信(mmbiz.qpic.cn/wx.qlogo.cn)用 host 前缀形式并补 wxtype 参数(参考实现 WeChatImageUtils.convertImageUrl);
- * 小红书(xhscdn 系)用完整 URL 形式(https://qpic.cn.in/<原始URL>,与 parse_hub_bot 一致)
+ * 小红书(xhscdn 系)/B站(hdslb 系)用完整 URL 形式(https://qpic.cn.in/<原始URL>,与 parse_hub_bot 一致)
  */
 export function convertImageUrl(imageUrl: string): string {
   if (!imageUrl) return '';
@@ -99,8 +99,8 @@ export function convertImageUrl(imageUrl: string): string {
     return imageUrl;
   }
 
-  // 小红书图床:完整原始 URL 直接接在反代域名后
-  if (imageUrl.includes('xhscdn.')) return `https://qpic.cn.in/${imageUrl}`;
+  // 小红书(xhscdn)/B站(hdslb)图床:完整原始 URL 直接接在反代域名后
+  if (imageUrl.includes('xhscdn.') || imageUrl.includes('hdslb.')) return `https://qpic.cn.in/${imageUrl}`;
 
   let out = imageUrl;
   if (out.includes('mmbiz.qpic.cn')) out = out.replace('mmbiz.qpic.cn', 'qpic.cn.in/mmbiz.qpic.cn');

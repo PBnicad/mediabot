@@ -40,9 +40,11 @@ const HELP_TEXT = `🔗 <b>链接解析 Bot</b>
 
 export async function dispatch(update: TgUpdate, env: Env, origin: string): Promise<void> {
   const tg = new Telegram(env);
+  // 自建 /proxy 的对外域名:优先用配置的独立域名(PROXY_ORIGIN),缺省回退请求来源域名(workers.dev)
+  const proxyOrigin = env.PROXY_ORIGIN?.replace(/\/+$/, '') || origin;
   try {
-    if (update.message) await handleMessage(tg, update.message, env, origin);
-    else if (update.inline_query) await handleInline(tg, update.inline_query, env, origin);
+    if (update.message) await handleMessage(tg, update.message, env, proxyOrigin);
+    else if (update.inline_query) await handleInline(tg, update.inline_query, env, proxyOrigin);
   } catch (e) {
     console.error('dispatch error:', e);
   }
