@@ -16,6 +16,8 @@ const HOST_RULES: [string, string][] = [
   ['akamaized', 'https://www.bilibili.com/'],
   ['weibocdn', 'https://weibo.com/'],
   ['sinaimg', 'https://weibo.com/'],
+  ['qpic.cn', 'https://mp.weixin.qq.com/'],
+  ['qlogo.cn', 'https://mp.weixin.qq.com/'],
   ['snssdk', 'https://www.douyin.com/'],
   ['douyinpic', 'https://www.douyin.com/'],
   ['douyinvod', 'https://www.douyin.com/'],
@@ -30,6 +32,15 @@ function refererFor(hostname: string): string | null {
     if (hostname.includes(key)) return referer;
   }
   return null;
+}
+
+/** 该 URL 的域名是否在本站 /proxy 白名单内(可经自建代理转发) */
+export function isProxyableHost(url: string): boolean {
+  try {
+    return refererFor(new URL(url).hostname) !== null;
+  } catch {
+    return false;
+  }
 }
 
 export async function handleProxy(request: Request, url: URL, relay: RelayConfig = {}): Promise<Response> {

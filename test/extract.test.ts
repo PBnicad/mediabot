@@ -187,6 +187,17 @@ describe('多图模式', () => {
     expect(telegraphImageUrls(makeResult({ type: 'video' }))).toEqual([]);
   });
 
+  it('配置自建代理后,xhscdn/hdslb 图集优先进本站 /proxy', () => {
+    const result = makeResult({
+      type: 'images',
+      media: [img('https://sns-webpic-qc.xhscdn.com/a.jpg'), img('https://i0.hdslb.com/bfs/x.jpg')],
+    });
+    expect(telegraphImageUrls(result, 'https://proxy.example.com')).toEqual([
+      `https://proxy.example.com/proxy?url=${encodeURIComponent('https://sns-webpic-qc.xhscdn.com/a.jpg')}`,
+      `https://proxy.example.com/proxy?url=${encodeURIComponent('https://i0.hdslb.com/bfs/x.jpg')}`,
+    ]);
+  });
+
   it('小红书 xhscdn / B站 hdslb 图经 qpic.cn.in 反代(完整 URL 形式)', () => {
     const result = makeResult({
       type: 'images',
@@ -249,5 +260,36 @@ describe('分享链接清洗(去用户指纹)', () => {
 
   it('非法 URL 原样返回', () => {
     expect(cleanShareUrl('not a url')).toBe('not a url');
+  });
+});
+
+describe('convertImageUrl 图床反代(自建优先,qpic 兜底)', () => {
+  const PROXY = 'https://proxy.example.com';
+
+  it('配置自建代理域名后,微信/小红书/B站图床优先走本站 /proxy', () => {
+    expect(convertImageUrl('https://mmbiz.qpic.cn/mmbiz_jpg/abc/640?wx_fmt=jpeg', PROXY)).toBe(
+      `${PROXY}/proxy?url=${encodeURIComponent('https://mmbiz.qpic.cn/mmbiz_jpg/abc/640?wx_fmt=jpeg')}`,
+    );
+    expect(convertImageUrl('https://sns-webpic-qc.xhscdn.com/a.jpg', PROXY)).toBe(
+      `${PROXY}/proxy?url=${encodeURIComponent('https://sns-webpic-qc.xhscdn.com/a.jpg')}`,
+    );
+    expect(convertImageUrl('https://i0.hdslb.com/bfs/archive/x.jpg', PROXY)).toBe(
+      `${PROXY}/proxy?url=${encodeURIComponent('https://i0.hdslb.com/bfs/archive/x.jpg')}`,
+    );
+  });
+
+  it('未配置代理域名时回退 qpic.cn.in(微信 host 前缀 + wxtype)', () => {
+    expect(convertImageUrl('https://mmbiz.qpic.cn/mmbiz_jpg/abc/640')).toBe(
+      'https://qpic.cn.in/mmbiz.qpic.cn/mmbiz_jpg/abc/640?wxtype=jpeg&wxfrom=0',
+    );
+  });
+
+  it('已是 /proxy 链接的原样返回(不补 wxtype、不重复代理)', () => {
+    const u = `${PROXY}/proxy?url=${encodeURIComponent('https://mmbiz.qpic.cn/a/640')}`;
+    expect(convertImageUrl(u, PROXY)).toBe(u);
+  });
+
+  it('未知图床不代理', () => {
+    expect(convertImageUrl('https://pbs.twimg.com/media/x.jpg', PROXY)).toBe('https://pbs.twimg.com/media/x.jpg');
   });
 });

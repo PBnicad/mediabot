@@ -8,7 +8,7 @@
 ## 功能特性
 
 - **多平台解析**:私聊/群聊发链接即解析,支持 inline 模式(`@bot <链接>`)
-- **长文模式**:正文超过 800 字自动转 Telegraph,bot 只回 Telegraph 链接 + 原文链接(不刷屏);多图在聊天内直接发相册,仅 inline 模式(发不了相册)转 Telegraph 图集;Telegraph 配图经 qpic.cn.in 反代(小红书/B站/微信图床)或本站 /proxy(微博等强防盗链)嵌入
+- **长文模式**:正文超过 800 字自动转 Telegraph,bot 只回 Telegraph 链接 + 原文链接(不刷屏);多图在聊天内直接发相册,仅 inline 模式(发不了相册)转 Telegraph 图集;Telegraph 配图优先经本站 /proxy(独立域名,微信/小红书/B站/微博图床均在白名单)嵌入,未配置独立域名时回退 qpic.cn.in 公共反代
 - **链接清洗**:外发的原文链接重建为规范地址,剥除分享追踪参数(xsec_token / igsh / t= / spm / vd_source / share_* 等),不带分享者指纹
 - **防盗链处理**:URL 直发优先(防盗链视频经本站 /proxy 补 Referer,封 CF 的自动走中继流式转发),失败再回退 Worker 中转下载,超过 50MB 提示限制
 

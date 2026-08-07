@@ -1,4 +1,5 @@
 import { marked } from 'marked';
+import { isProxyableHost } from '../proxy';
 
 /**
  * telegra.ph 匿名 API 与内容格式化管线。
@@ -81,16 +82,19 @@ export async function createTextPage(opts: {
 }
 
 /**
- * 图床经 qpic.cn.in 公共反代访问:
- * 微信(mmbiz.qpic.cn/wx.qlogo.cn)用 host 前缀形式并补 wxtype 参数(参考实现 WeChatImageUtils.convertImageUrl);
- * 小红书(xhscdn 系)/B站(hdslb 系)用完整 URL 形式(https://qpic.cn.in/<原始URL>,与 parse_hub_bot 一致)
+ * 图床反代:自建 /proxy 优先(能走自建都走自建),未配置代理域名时回退 qpic.cn.in 公共反代。
+ * qpic.cn.in 两种用法:微信(mmbiz.qpic.cn/wx.qlogo.cn)host 前缀形式并补 wxtype 参数
+ * (参考实现 WeChatImageUtils.convertImageUrl);小红书(xhscdn 系)/B站(hdslb 系)完整 URL 形式。
  */
-export function convertImageUrl(imageUrl: string): string {
+export function convertImageUrl(imageUrl: string, proxyOrigin?: string): string {
   if (!imageUrl) return '';
 
   const isWechatHost = imageUrl.includes('mmbiz.qpic.cn') || imageUrl.includes('wx.qlogo.cn');
 
-  // 已代理过:微信图补参数,其余原样返回,不重复代理
+  // 已是本站 /proxy 链接:原样返回(/proxy 自带 Referer,无需 wxtype)
+  if (imageUrl.includes('/proxy?url=')) return imageUrl;
+
+  // 已经 qpic.cn.in 反代过:微信图补参数,其余原样返回,不重复代理
   if (imageUrl.includes('qpic.cn.in/')) {
     if (isWechatHost && !imageUrl.includes('wxtype=')) {
       const sep = imageUrl.includes('?') ? '&' : '?';
@@ -99,7 +103,12 @@ export function convertImageUrl(imageUrl: string): string {
     return imageUrl;
   }
 
-  // 小红书(xhscdn)/B站(hdslb)图床:完整原始 URL 直接接在反代域名后
+  // 自建 /proxy(微信/小红书/B站/微博/抖音/TikTok 图床均在白名单)
+  if (proxyOrigin && isProxyableHost(imageUrl)) {
+    return `${proxyOrigin}/proxy?url=${encodeURIComponent(imageUrl)}`;
+  }
+
+  // 兜底:qpic.cn.in 公共反代(小红书/B站完整 URL 形式)
   if (imageUrl.includes('xhscdn.') || imageUrl.includes('hdslb.')) return `https://qpic.cn.in/${imageUrl}`;
 
   let out = imageUrl;
@@ -111,6 +120,19 @@ export function convertImageUrl(imageUrl: string): string {
     return `${out}${sep}wxtype=jpeg&wxfrom=0`;
   }
   return out;
+}
+
+/** 公众号正文图片改写:配置自建代理域名时微信图床完整 URL 经本站 /proxy;否则 qpic.cn.in host 前缀反代 */
+export function rewriteArticleImageHosts(markdown: string, proxyOrigin?: string): string {
+  if (proxyOrigin) {
+    return markdown.replace(
+      /https?:\/\/(?:mmbiz\.qpic\.cn|wx\.qlogo\.cn)[^\s)"'\]]+/g,
+      (u) => `${proxyOrigin}/proxy?url=${encodeURIComponent(u)}`,
+    );
+  }
+  return markdown
+    .replace(/mmbiz\.qpic\.cn/g, 'qpic.cn.in/mmbiz.qpic.cn')
+    .replace(/wx\.qlogo\.cn/g, 'qpic.cn.in/wx.qlogo.cn');
 }
 
 // ──────────────────────── cleanArticleHtml(白名单清洗) ────────────────────────

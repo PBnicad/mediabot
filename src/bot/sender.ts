@@ -23,8 +23,8 @@ export function telegraphImageUrls(result: ParseResult, origin?: string): string
   if (result.type !== 'images') return [];
   const urls: string[] = [];
   for (const m of result.media) {
-    // 无防盗链的直链(xhscdn/微信图床经 qpic.cn.in 反代);有防盗链的经本站 /proxy(origin 缺失时丢弃,避免裂图)
-    if (!m.referer) urls.push(convertImageUrl(m.url));
+    // 无防盗链的经图床反代(convertImageUrl:自建 /proxy 优先,qpic.cn.in 兜底);有防盗链的经本站 /proxy(origin 缺失时丢弃,避免裂图)
+    if (!m.referer) urls.push(convertImageUrl(m.url, origin));
     else if (origin) urls.push(`${origin}/proxy?url=${encodeURIComponent(m.url)}`);
   }
   return urls.slice(0, 20);

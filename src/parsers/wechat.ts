@@ -1,6 +1,6 @@
-import { ParseError, type ParseResult, type Parser } from './types';
+import { ParseError, type ParseResult, type Parser, type ParserEnv } from './types';
 import { UA_DESKTOP, fetchText } from './http';
-import { convertImageUrl, createPage, formatContent } from './telegraph';
+import { convertImageUrl, createPage, formatContent, rewriteArticleImageHosts } from './telegraph';
 import { cleanShareUrl } from './clean';
 import TurndownService from 'turndown';
 import { parseHTML } from 'linkedom';
@@ -179,7 +179,7 @@ export const wechatParser: Parser = {
     return url.hostname === 'mp.weixin.qq.com' && (url.pathname.startsWith('/s/') || url.pathname === '/s');
   },
 
-  async parse(rawUrl: string): Promise<ParseResult> {
+  async parse(rawUrl: string, env: ParserEnv): Promise<ParseResult> {
     const url = cleanUrl(rawUrl);
 
     // 微信对部分 IP 弹"环境异常"验证页:指数退避重试,换出口 IP 有机会拿到正文
@@ -193,10 +193,8 @@ export const wechatParser: Parser = {
     }
     if (!contentHtml) throw new ParseError(NAME, '触发了微信环境验证,请稍后重试(文章也可能已删除)');
 
-    // 提取正文并转 Markdown,域名替换为 qpic.cn.in 反代(与参考实现一致)
-    const markdown = htmlToMarkdown(cleanContent(contentHtml))
-      .replace(/mmbiz\.qpic\.cn/g, 'qpic.cn.in/mmbiz.qpic.cn')
-      .replace(/wx\.qlogo\.cn/g, 'qpic.cn.in/wx.qlogo.cn');
+    // 提取正文并转 Markdown,图床改写(自建 /proxy 优先,缺省 qpic.cn.in 反代)
+    const markdown = rewriteArticleImageHosts(htmlToMarkdown(cleanContent(contentHtml)), env.PROXY_ORIGIN);
     if (!markdown.trim()) throw new ParseError(NAME, '正文为空');
 
     const title = extractTitle(html);
@@ -222,7 +220,7 @@ export const wechatParser: Parser = {
       sourceUrl: cleanShareUrl(rawUrl),
       media: [],
       articleUrl: pageUrl,
-      coverUrl: cover ? convertImageUrl(cover) : undefined,
+      coverUrl: cover ? convertImageUrl(cover, env.PROXY_ORIGIN) : undefined,
       summary,
       publishTime: publishTime ?? undefined,
       readingMinutes,

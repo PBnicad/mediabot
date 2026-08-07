@@ -50,6 +50,8 @@ export interface ParserEnv {
   MEDIA_RELAY_URL?: string;
   /** 中继鉴权 token(x-proxy-token 头) */
   MEDIA_RELAY_TOKEN?: string;
+  /** 自建 /proxy 的对外独立域名(图床反代优先走自建,缺省回退 qpic.cn.in) */
+  PROXY_ORIGIN?: string;
 }
 
 export interface Parser {
