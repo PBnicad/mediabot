@@ -112,6 +112,9 @@ export const twitterParser: Parser = {
       return { ...base, type: 'images', media };
     }
 
-    throw new ParseError(NAME, '推文不包含可解析的媒体内容');
+    // 纯文字推文
+    if (tweet.text) return { ...base, type: 'text', media: [] };
+
+    throw new ParseError(NAME, '推文内容为空');
   },
 };

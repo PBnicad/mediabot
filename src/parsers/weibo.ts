@@ -180,7 +180,11 @@ export const weiboParser: Parser = {
       if (result) return result;
     }
 
-    throw new ParseError(NAME, '微博不包含可解析的媒体内容');
+    // 纯文字微博(转发的取被转发那条的正文)
+    const text = base.title ?? (status.retweeted_status ? (status.retweeted_status.text_raw ?? status.retweeted_status.text?.replace(/<[^>]+>/g, '')) : undefined);
+    if (text) return { ...base, type: 'text', title: text, media: [] };
+
+    throw new ParseError(NAME, '微博内容为空');
   },
 };
 

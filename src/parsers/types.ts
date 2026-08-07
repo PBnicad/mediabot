@@ -17,7 +17,7 @@ export interface MediaItem {
   referer?: string;
 }
 
-export type ResultType = 'video' | 'images' | 'article';
+export type ResultType = 'video' | 'images' | 'article' | 'text';
 
 export interface ParseResult {
   /** 平台 ID,如 douyin / bilibili */

@@ -215,6 +215,16 @@ async function handleInline(tg: Telegram, iq: TgInlineQuery, env: Env, origin: s
         `<b>${escapeHtml(result.title ?? '微信文章')}</b>\n📄 <a href="${result.articleUrl}">点击阅读全文(Telegraph)</a>\n<a href="${escapeHtml(result.sourceUrl)}">原文链接</a>`,
       ),
     );
+  } else if (result.type === 'text') {
+    // 纯文字内容(长文已在上方拦截转 Telegraph)
+    results.push(
+      inlineArticle(
+        'text',
+        result.title?.trim().slice(0, 64) || `${result.platformName} 内容`,
+        `📝 ${result.platformName} · 文字`,
+        caption,
+      ),
+    );
   }
 
   if (!results.length) {

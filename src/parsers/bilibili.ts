@@ -406,7 +406,9 @@ async function parseDynamic(id: string, rawUrl: string, cookie: string): Promise
       .filter((u): u is string => !!u)
       .map((u) => ({ type: 'image' as const, url: u.replace(/^http:/, 'https:') }));
     if (media.length) return { ...base, type: 'images', title: text, media };
-    throw new ParseError(NAME, '纯文字动态,没有可发送的媒体内容');
+    // 纯文字动态
+    if (text) return { ...base, type: 'text', title: text, media: [] };
+    throw new ParseError(NAME, '动态内容为空');
   }
 
   throw new ParseError(NAME, `暂不支持的动态类型: ${major.type ?? '未知'}`);

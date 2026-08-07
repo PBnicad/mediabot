@@ -89,6 +89,12 @@ export async function sendResult(
     return;
   }
 
+  // 纯文本内容(长文已在 dispatch 拦截转 Telegraph,此处为 ≤800 字)
+  if (result.type === 'text') {
+    await tg.sendMessage(chatId, buildCaption(result), replyTo);
+    return;
+  }
+
   const caption = buildCaption(result);
 
   if (result.type === 'video') {
