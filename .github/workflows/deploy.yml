@@ -37,18 +37,19 @@ jobs:
           accountId: ${{ secrets.CF_ACCOUNT_ID }}
           command: deploy ${{ vars.CUSTOM_DOMAIN != '' && format('--domains {0}', vars.CUSTOM_DOMAIN) || '' }}
 
-      # 部署 Vercel 中继(vercel-proxy/;项目 rootDirectory 已指向该目录,从仓库根目录构建)。
+      # 部署 Vercel 中继(vercel-proxy/;项目 rootDirectory 已指向该目录,从仓库根目录部署)。
       # 需要 secrets:
-      #   VERCEL_TOKEN      — https://vercel.com/account/tokens 创建(scope 选本团队)
+      #   VERCEL_TOKEN      — https://vercel.com/account/tokens 创建(项目级 scope 即可)
       #   VERCEL_ORG_ID / VERCEL_PROJECT_ID — 见 vercel-proxy/.vercel/project.json
       # 未配置 VERCEL_TOKEN 时跳过(中继很少改,不阻塞 worker 部署);
       # Vercel 项目的 Git 直连已断开,中继只经此流水线受门控部署。
+      # 注:不用 vercel pull/build(需团队 API 权限);手写 .vercel/project.json 链接后直接 deploy
       - name: Deploy relay to Vercel
         if: ${{ env.VERCEL_TOKEN != '' }}
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
-          npx vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
-          npx vercel build --prod --token="$VERCEL_TOKEN"
-          npx vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+          mkdir -p .vercel
+          printf '{"projectId":"%s","orgId":"%s"}' "$VERCEL_PROJECT_ID" "$VERCEL_ORG_ID" > .vercel/project.json
+          npx vercel deploy --prod --yes --token="$VERCEL_TOKEN"
