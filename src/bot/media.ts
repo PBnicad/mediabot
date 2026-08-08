@@ -53,15 +53,25 @@ export async function downloadMedia(item: Pick<MediaItem, 'url' | 'referer'>, re
   if (item.referer) headers['Referer'] = item.referer;
 
   // 必须在 webhook waitUntil 的 30s 墙钟预算内完成:超时主动报错,而不是被运行时静默取消(用户看到永远"发送中")
-  const res = await fetch(url, { headers, signal: AbortSignal.timeout(25_000) });
-  if (!res.ok) throw new Error(`下载失败(HTTP ${res.status})`);
+  // CDN 偶发瞬时断连(Network connection lost):重试一次(明确错误如 HTTP 状态/超限不重试)
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(url, { headers, signal: AbortSignal.timeout(25_000) });
+      if (!res.ok) throw new Error(`下载失败(HTTP ${res.status})`);
 
-  const len = Number(res.headers.get('content-length') ?? 0);
-  if (len > MAX_RELAY_SIZE) throw new MediaTooBigError(len);
+      const len = Number(res.headers.get('content-length') ?? 0);
+      if (len > MAX_RELAY_SIZE) throw new MediaTooBigError(len);
 
-  const data = await res.arrayBuffer();
-  if (data.byteLength > MAX_RELAY_SIZE) throw new MediaTooBigError(data.byteLength);
-  if (data.byteLength === 0) throw new Error('下载内容为空');
+      const data = await res.arrayBuffer();
+      if (data.byteLength > MAX_RELAY_SIZE) throw new MediaTooBigError(data.byteLength);
+      if (data.byteLength === 0) throw new Error('下载内容为空');
 
-  return { data, contentType: res.headers.get('content-type') ?? 'application/octet-stream' };
+      return { data, contentType: res.headers.get('content-type') ?? 'application/octet-stream' };
+    } catch (e) {
+      lastError = e;
+      if (e instanceof MediaTooBigError || (e instanceof Error && e.message.startsWith('下载失败'))) throw e;
+    }
+  }
+  throw lastError;
 }

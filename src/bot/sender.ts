@@ -140,11 +140,14 @@ export async function sendResult(
     if (directUrl) {
       // 防盗链封面同样经 /proxy,避免 Telegram 抓封面失败导致整个 sendVideo 被拒
       const cover = v.coverUrl && v.referer && origin ? `${origin}/proxy?url=${encodeURIComponent(v.coverUrl)}` : v.coverUrl;
-      try {
-        await tg.sendVideoByUrl(chatId, directUrl, caption, { cover, duration: v.duration }, replyTo);
-        return;
-      } catch {
-        // 直发失败(超 20MB 等),落入 relay
+      // Telegram 抓取偶发瞬时断连(Network connection lost),重试一次,仍失败落入 relay
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          await tg.sendVideoByUrl(chatId, directUrl, caption, { cover, duration: v.duration }, replyTo);
+          return;
+        } catch {
+          if (attempt === 1) break;
+        }
       }
     }
 
