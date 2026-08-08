@@ -156,8 +156,23 @@ interface PlayUrlData {
   message?: string;
   data?: {
     quality?: number;
-    durl?: { url: string; size?: number }[];
+    durl?: { url: string; size?: number; backup_url?: string[] }[];
   };
+}
+
+/** 取流节点优选:cn-* 区域节点对境外/机房出口限速严重(Telegram 抓取超时),
+ * 优先 backup_url 里的 upos-* 全球 CDN 节点 */
+function pickStreamUrl(durl: { url?: string; backup_url?: string[] }): string | undefined {
+  const candidates = [durl.url, ...(durl.backup_url ?? [])].filter((u): u is string => !!u);
+  return (
+    candidates.find((u) => {
+      try {
+        return !new URL(u).hostname.startsWith('cn-');
+      } catch {
+        return false;
+      }
+    }) ?? candidates[0]
+  );
 }
 
 /** 多线路取流:每个清晰度依次尝试 iOS APP → TV → web WBI,任一成功即返回 */
@@ -177,7 +192,10 @@ async function getPlayUrlWithFallback(bvid: string, cid: number, cookie: string)
     );
     const data = await fetchBiliJson<PlayUrlData>(`https://api.bilibili.com/x/player/playurl?${signed}`, { 'User-Agent': conf.ua });
     const durl = data.data?.durl?.[0];
-    if (data.code === 0 && durl?.url) return { url: durl.url, quality: data.data?.quality, size: durl.size };
+    if (data.code === 0 && durl?.url) {
+      const url = pickStreamUrl(durl);
+      if (url) return { url, quality: data.data?.quality, size: durl.size };
+    }
     throw new Error(data.message ?? ERROR_MAP[data.code ?? 0] ?? '取流失败');
   };
 
@@ -190,7 +208,10 @@ async function getPlayUrlWithFallback(bvid: string, cid: number, cookie: string)
       Cookie: cookie,
     });
     const durl = data.data?.durl?.[0];
-    if (data.code === 0 && durl?.url) return { url: durl.url, quality: data.data?.quality, size: durl.size };
+    if (data.code === 0 && durl?.url) {
+      const url = pickStreamUrl(durl);
+      if (url) return { url, quality: data.data?.quality, size: durl.size };
+    }
     throw new Error(data.message ?? ERROR_MAP[data.code ?? 0] ?? '取流失败');
   };
 
