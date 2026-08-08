@@ -126,7 +126,7 @@ src/
 ## CI/CD
 
 - **CI**(`.github/workflows/ci.yml`):非 main 分支 push 与 PR 触发,跑 `typecheck` + `vitest`
-- **CD**(`.github/workflows/deploy.yml`):push 到 main 触发,测试通过后依次部署 Cloudflare Worker(`wrangler deploy`)和 Vercel 中继(`vercel deploy --prebuilt`;未配置 `VERCEL_TOKEN` 时跳过该步)
+- **CD**(`.github/workflows/deploy.yml`):push 到 main 触发,测试通过后依次部署 Cloudflare Worker(`wrangler deploy`)和 Vercel 中继(手写 `.vercel/project.json` 后 `vercel deploy --prod`;未配置 `VERCEL_TOKEN` 时跳过该步)
 
 CD 需要在仓库 **Settings → Secrets and variables → Actions** 配置:
 
@@ -142,6 +142,11 @@ CD 需要在仓库 **Settings → Secrets and variables → Actions** 配置:
 > `BOT_TOKEN` / `WEBHOOK_SECRET` / `INSTAGRAM_COOKIE` 等 Worker secrets 存于 Cloudflare,`wrangler deploy` 不会清除,无需在 CI 重复配置。
 >
 > 隐私说明:仓库不包含任何个人域名/账号信息;自定义域名通过仪表盘绑定或 `--domains` 参数注入。
+
+## 致谢
+
+- [parse_hub_bot](https://github.com/z-mio/parse_hub_bot) — 本项目的参考原型,多平台解析思路、图床反代(qpic.cn.in)用法等均来自该项目
+- [bili-resolver](https://github.com/Yamada-Ryo4/bili-resolver) — `/proxy` 视频中转与 Vercel 中继协议(base + encodeURIComponent(url))移植自该项目
 
 ## 开源协议
 
