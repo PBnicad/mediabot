@@ -17,7 +17,7 @@ export interface MediaItem {
   referer?: string;
 }
 
-export type ResultType = 'video' | 'images' | 'article' | 'text';
+export type ResultType = 'video' | 'images' | 'mixed' | 'article' | 'text';
 
 export interface ParseResult {
   /** 平台 ID,如 douyin / bilibili */
@@ -29,7 +29,7 @@ export interface ParseResult {
   author?: string;
   /** 原始链接(用于 caption) */
   sourceUrl: string;
-  /** video 类型取第一个;images 类型为图集;article 类型为空 */
+  /** video 类型取第一个;images 类型为图集;mixed 类型为视频+图片混合;article 类型为空 */
   media: MediaItem[];
   /** article 类型的 telegraph 页面链接 */
   articleUrl?: string;

@@ -166,6 +166,49 @@ export async function sendResult(
     return;
   }
 
+  // 视频+图片混合(IG 图集):优先混合相册(每组 ≤10);失败兜底拆成 视频逐条 + 图片相册
+  if (result.type === 'mixed') {
+    const items = result.media.filter((m) => m.url);
+    if (!items.length) throw new Error('解析结果中没有媒体');
+    // 防盗链媒体经本站 /proxy 补 Referer(封 CF 的由 proxy 自动走中继)
+    const inputs = items.map((m) => ({
+      type: m.type === 'video' ? ('video' as const) : ('photo' as const),
+      url: m.referer && origin ? `${origin}/proxy?url=${encodeURIComponent(m.url)}` : m.url,
+      ...(m.coverUrl ? { cover: m.coverUrl } : {}),
+      ...(m.duration ? { duration: m.duration } : {}),
+    }));
+
+    try {
+      for (let i = 0; i < inputs.length; i += 10) {
+        await tg.sendMediaGroupByUrl(chatId, inputs.slice(i, i + 10), i === 0 ? caption : '', replyTo);
+      }
+      return;
+    } catch {
+      // 混合相册失败,拆开重试
+    }
+
+    let sent = false;
+    for (const v of inputs.filter((i) => i.type === 'video')) {
+      try {
+        await tg.sendVideoByUrl(chatId, v.url, sent ? '' : caption, { cover: v.cover, duration: v.duration }, sent ? undefined : replyTo);
+        sent = true;
+      } catch {
+        // 跳过发送失败的视频
+      }
+    }
+    const photos = inputs.filter((i) => i.type === 'photo');
+    for (let i = 0; i < photos.length; i += 10) {
+      try {
+        await tg.sendMediaGroupByUrl(chatId, photos.slice(i, i + 10), sent ? '' : caption, sent ? undefined : replyTo);
+        sent = true;
+      } catch {
+        // 跳过发送失败的组
+      }
+    }
+    if (!sent) throw new Error('混合媒体发送失败');
+    return;
+  }
+
   // images:防盗链图(微博等)经本站 /proxy 补 Referer 供 Telegram 直抓(封 CF 的由 proxy 自动走中继),
   // 避免 worker 侧整段下载+上传撑爆 waitUntil 的 30s 墙钟预算
   const photos = result.media.filter((m) => m.url);
@@ -182,7 +225,12 @@ export async function sendResult(
   } else {
     try {
       for (let i = 0; i < urls.length; i += 10) {
-        await tg.sendMediaGroupByUrl(chatId, urls.slice(i, i + 10), i === 0 ? caption : '', replyTo);
+        await tg.sendMediaGroupByUrl(
+          chatId,
+          urls.slice(i, i + 10).map((url) => ({ type: 'photo' as const, url })),
+          i === 0 ? caption : '',
+          replyTo,
+        );
       }
       return;
     } catch {

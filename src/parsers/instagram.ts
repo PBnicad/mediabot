@@ -125,20 +125,31 @@ export const instagramParser: Parser = {
     const item = info.items?.[0];
     if (!item) throw new ParseError(NAME, '媒体信息为空(cookie 可能已失效)');
 
-    // 图集:优先视频(Telegram mediaGroup 混合类型处理复杂,v1 取首个视频)
+    // 图集:视频+图片全量提取;混合走 mixed(混合相册),纯视频取首个,纯图片全量
     if (item.carousel_media?.length) {
+      const media: MediaItem[] = [];
       for (const node of item.carousel_media) {
         if (node.media_type === 2) {
-          const r = mediaToVideo(node, base);
-          if (r) return r;
+          const best = pickBest(node.video_versions);
+          if (best?.url) {
+            media.push({
+              type: 'video',
+              url: best.url,
+              coverUrl: pickBest(node.image_versions2?.candidates)?.url,
+              duration: node.video_duration ? Math.round(node.video_duration) : undefined,
+              width: best.width,
+              height: best.height,
+            });
+          }
+        } else {
+          const best = pickBest(node.image_versions2?.candidates);
+          if (best?.url) media.push({ type: 'image', url: best.url });
         }
       }
-      const images: MediaItem[] = [];
-      for (const node of item.carousel_media) {
-        const best = pickBest(node.image_versions2?.candidates);
-        if (best?.url) images.push({ type: 'image', url: best.url });
-      }
-      if (images.length) return { ...base, type: 'images', media: images };
+      const videos = media.filter((m) => m.type === 'video');
+      if (videos.length && media.length > videos.length) return { ...base, type: 'mixed', media };
+      if (videos.length) return { ...base, type: 'video', media: [videos[0]] };
+      if (media.length) return { ...base, type: 'images', media };
       throw new ParseError(NAME, '图集媒体提取失败');
     }
 

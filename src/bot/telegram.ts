@@ -88,11 +88,19 @@ export class Telegram {
     return this.call('sendVideo', form);
   }
 
-  /** 通过 URL 组图发送(每组 ≤10) */
-  sendMediaGroupByUrl(chatId: number | string, urls: string[], caption: string, replyTo?: number): Promise<TgMessage[]> {
-    const media = urls.map((u, i) => ({
-      type: 'photo',
-      media: u,
+  /** 通过 URL 组图发送(每组 ≤10,支持 photo/video 混合) */
+  sendMediaGroupByUrl(
+    chatId: number | string,
+    items: { type: 'photo' | 'video'; url: string; cover?: string; duration?: number }[],
+    caption: string,
+    replyTo?: number,
+  ): Promise<TgMessage[]> {
+    const media = items.map((it, i) => ({
+      type: it.type,
+      media: it.url,
+      ...(it.type === 'video' ? { supports_streaming: true } : {}),
+      ...(it.cover ? { cover: it.cover } : {}),
+      ...(it.duration ? { duration: it.duration } : {}),
       ...(i === 0 ? { caption, parse_mode: 'HTML' } : {}),
     }));
     return this.call('sendMediaGroup', {

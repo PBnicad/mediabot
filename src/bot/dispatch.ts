@@ -209,6 +209,39 @@ async function handleInline(tg: Telegram, iq: TgInlineQuery, env: Env, origin: s
         parse_mode: 'HTML',
       });
     }
+  } else if (result.type === 'mixed') {
+    // 混合图集:inline 发不了相册,视频/图片逐项给出
+    const v = result.media.find((m) => m.type === 'video');
+    if (v) {
+      const videoUrl = v.referer ? `${origin}/proxy?url=${encodeURIComponent(v.url)}` : v.url;
+      const thumbUrl = v.coverUrl ? (v.referer ? `${origin}/proxy?url=${encodeURIComponent(v.coverUrl)}` : v.coverUrl) : null;
+      if (thumbUrl) {
+        results.push({
+          type: 'video',
+          id: 'v0',
+          video_url: videoUrl,
+          mime_type: 'video/mp4',
+          thumb_url: thumbUrl,
+          title: result.title?.slice(0, 64) || `${result.platformName} 视频`,
+          caption,
+          parse_mode: 'HTML',
+          ...(v.duration ? { video_duration: v.duration } : {}),
+          ...(v.width && v.height ? { video_width: v.width, video_height: v.height } : {}),
+        });
+      }
+    }
+    for (const [i, m] of result.media.filter((m) => m.type === 'image').slice(0, 10).entries()) {
+      const imgUrl = m.referer ? `${origin}/proxy?url=${encodeURIComponent(m.url)}` : m.url;
+      results.push({
+        type: 'photo',
+        id: `p${i}`,
+        photo_url: imgUrl,
+        thumb_url: imgUrl,
+        title: result.title?.slice(0, 64) || `${result.platformName} 图片`,
+        caption: i === 0 && !v ? caption : '',
+        parse_mode: 'HTML',
+      });
+    }
   } else if (result.type === 'article' && result.articleUrl) {
     results.push(
       inlineArticle(
