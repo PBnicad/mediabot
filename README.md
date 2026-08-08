@@ -68,8 +68,10 @@ curl "https://mediabot.<你的子域>.workers.dev/setup?secret=<WEBHOOK_SECRET>"
 可选机密:
 
 ```bash
-# Instagram 完整模式(视频/图集):浏览器登录 instagram.com 后,F12 → Application → Cookies 复制整串
-npx wrangler secret put INSTAGRAM_COOKIE   # 未配置时 IG 仅发封面图
+# Instagram 完整模式(视频/图集):浏览器登录 instagram.com 后,F12 → Network → 任一
+# instagram.com 请求 → Request Headers 复制 cookie 整串。首次使用后写入 KV cookie 罐,
+# 之后 IG 响应里的 Set-Cookie 自动滚动续期(见 src/cookiejar.ts);未配置时 IG 仅发封面图
+npx wrangler secret put INSTAGRAM_COOKIE
 
 # 媒体/API 中继(B站 API 与微博 CDN 对 Cloudflare IP 全系风控,需干净 IP 出口):
 npx wrangler secret put MEDIA_RELAY_URL    # 例:https://你的vercel应用/api/proxy?url=

@@ -3,6 +3,11 @@ main = "src/index.ts"
 compatibility_date = "2025-01-01"
 workers_dev = true
 
+# KV cookie 罐:平台 cookie 滚动续期(响应 Set-Cookie 自动合并,见 src/cookiejar.ts)
+[[kv_namespaces]]
+binding = "COOKIE_JAR"
+id = "b63521ff0f1b4cc7862b84781dde3994"
+
 # 自定义域名(可选,用于 /proxy 视频中转的外部访问):
 # 在 Cloudflare 仪表盘 → Workers → 本 worker → Settings → Domains & Routes 绑定你的域名,
 # 或在此取消注释并改成你自己的域名:

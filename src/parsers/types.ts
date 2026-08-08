@@ -52,6 +52,8 @@ export interface ParserEnv {
   MEDIA_RELAY_TOKEN?: string;
   /** 自建 /proxy 的对外独立域名(图床反代优先走自建,缺省回退 qpic.cn.in) */
   PROXY_ORIGIN?: string;
+  /** KV cookie 罐绑定(平台 cookie 滚动续期,见 src/cookiejar.ts) */
+  COOKIE_JAR?: KVNamespace;
 }
 
 export interface Parser {

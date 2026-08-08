@@ -11,4 +11,6 @@ export interface Env {
   MEDIA_RELAY_TOKEN?: string;
   /** 可选:自建 /proxy 的对外独立域名(如 https://proxy.example.com);缺省用请求来源域名(workers.dev) */
   PROXY_ORIGIN?: string;
+  /** KV cookie 罐绑定(平台 cookie 滚动续期) */
+  COOKIE_JAR?: KVNamespace;
 }

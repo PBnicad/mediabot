@@ -1,6 +1,7 @@
 import { ParseError, type MediaItem, type ParseResult, type Parser, type ParserEnv } from './types';
 import { UA_DESKTOP, UA_MOBILE, fetchJson } from './http';
 import { cleanShareUrl } from './clean';
+import { getCookie, mergeSetCookies } from '../cookiejar';
 
 const NAME = 'Instagram';
 const APP_ID = '936619743392459'; // Instagram Web 公开 App ID
@@ -94,7 +95,8 @@ export const instagramParser: Parser = {
       sourceUrl: cleanShareUrl(rawUrl),
     };
 
-    const cookie = env.INSTAGRAM_COOKIE?.trim();
+    // cookie 罐优先(KV 滚动续期),env 静态 secret 仅首次兜底灌入
+    const cookie = await getCookie(env.COOKIE_JAR, 'instagram', env.INSTAGRAM_COOKIE);
 
     // 免登录降级:仅封面图
     if (!cookie) {
@@ -107,14 +109,19 @@ export const instagramParser: Parser = {
     if (!mid) throw new ParseError(NAME, 'media_id 获取失败');
 
     let info: { items?: IgMedia[] };
+    let setCookies: string[] = [];
     try {
-      info = await fetchJson<{ items?: IgMedia[] }>(`https://i.instagram.com/api/v1/media/${mid}/info/`, {
-        ua: UA_MOBILE,
-        headers: { 'X-IG-App-ID': APP_ID, Cookie: cookie },
+      // 不用 fetchJson:需要响应头里的 Set-Cookie 合并回 cookie 罐(滚动续期)
+      const res = await fetch(`https://i.instagram.com/api/v1/media/${mid}/info/`, {
+        headers: { 'User-Agent': UA_MOBILE, Accept: 'application/json', 'X-IG-App-ID': APP_ID, Cookie: cookie },
       });
+      setCookies = res.headers.getSetCookie();
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      info = (await res.json()) as { items?: IgMedia[] };
     } catch (e) {
       throw new ParseError(NAME, `媒体信息获取失败(${e instanceof Error ? e.message : '网络错误'},cookie 可能已失效)`);
     }
+    await mergeSetCookies(env.COOKIE_JAR, 'instagram', setCookies);
     const item = info.items?.[0];
     if (!item) throw new ParseError(NAME, '媒体信息为空(cookie 可能已失效)');
 

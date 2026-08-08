@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { extractUrls, findParser } from '../src/parsers';
 import { cleanShareUrl } from '../src/parsers/clean';
+import { getCookie, mergeCookieString } from '../src/cookiejar';
 import { convertImageUrl, formatContent } from '../src/parsers/telegraph';
 import { LONG_TEXT_THRESHOLD, buildTelegraphMessage, isLongText, isMultiImage, telegraphImageUrls, videoDirectUrl } from '../src/bot/sender';
 import type { ParseResult } from '../src/parsers/types';
@@ -291,5 +292,37 @@ describe('convertImageUrl 图床反代(自建优先,qpic 兜底)', () => {
 
   it('未知图床不代理', () => {
     expect(convertImageUrl('https://pbs.twimg.com/media/x.jpg', PROXY)).toBe('https://pbs.twimg.com/media/x.jpg');
+  });
+});
+
+describe('cookie 罐(滚动续期)', () => {
+  it('mergeCookieString:新值覆盖、空值/Max-Age=0 删除、其余保留', () => {
+    const out = mergeCookieString('a=1; b=2; c=3', ['b=22; Path=/; HttpOnly', 'c=; Path=/; Max-Age=0', 'd=4; Path=/']);
+    expect(out).toBe('a=1; b=22; d=4');
+  });
+
+  it('mergeCookieString:值里含 = 不截断', () => {
+    expect(mergeCookieString('sessionid=abc%3Dxyz%3A0%3AAYg', ['sessionid=new%3Dval%3A1%3AXXX; Path=/'])).toBe(
+      'sessionid=new%3Dval%3A1%3AXXX',
+    );
+  });
+
+  it('getCookie:KV 优先,env 兜底并回灌', async () => {
+    const store = new Map<string, string>();
+    const kv = {
+      get: async (k: string) => store.get(k) ?? null,
+      put: async (k: string, v: string) => void store.set(k, v),
+    } as unknown as KVNamespace;
+
+    store.set('cookie:instagram', 'fresh=1');
+    expect(await getCookie(kv, 'instagram', 'old=1')).toBe('fresh=1');
+
+    store.clear();
+    expect(await getCookie(kv, 'instagram', 'seed=2')).toBe('seed=2');
+    expect(store.get('cookie:instagram')).toBe('seed=2');
+
+    store.clear();
+    expect(await getCookie(kv, 'instagram')).toBeUndefined();
+    expect(await getCookie(undefined, 'instagram', 'x=1')).toBe('x=1');
   });
 });
